@@ -1,0 +1,21 @@
+{
+  "name": "neuro-api-jippity",
+  "version": "1.0.0",
+  "description": "A tool for testing game integration with the Neuro-sama Game API",
+  "author": "EnterpriseScratchDev",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "npx tsx src/index.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "openai": "^4.76.3",
+    "winston": "^3.17.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.8",
+    "tsx": "^4.19.2"
+  },
+  "private": true
+}
