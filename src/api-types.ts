@@ -277,16 +277,36 @@ const ActionMessageSchema: JSONSchemaType<ActionMessage> = {
     additionalProperties: false
 };
 
-/** Validators */
-export const Validators = {
-    startup: ajv.compile(StartupMessageSchema),
-    context: ajv.compile(ContextMessageSchema),
-    registerActions: ajv.compile(RegisterActionsMessageSchema),
-    unregisterActions: ajv.compile(UnregisterActionsMessageSchema),
-    forceAction: ajv.compile(ForceActionMessageSchema),
-    actionResult: ajv.compile(ActionResultMessageSchema),
-    action: ajv.compile(ActionMessageSchema)
+type MessageTypeMapping = {
+    "startup": StartupMessage,
+    "context": ContextMessage,
+    "actions/register": RegisterActionsMessage,
+    "actions/unregister": UnregisterActionsMessage,
+    "actions/force": ForceActionMessage,
+    "action/result": ActionResultMessage,
+    "action": ActionMessage,
 };
+
+type MessageType = keyof MessageTypeMapping;
+
+/** Validators */
+export const Validators: Record<MessageType, ValidateFunction<BaseMessage>> = {
+    "startup": ajv.compile(StartupMessageSchema),
+    "context": ajv.compile(ContextMessageSchema),
+    "actions/register": ajv.compile(RegisterActionsMessageSchema),
+    "actions/unregister": ajv.compile(UnregisterActionsMessageSchema),
+    "actions/force": ajv.compile(ForceActionMessageSchema),
+    "action/result": ajv.compile(ActionResultMessageSchema),
+    "action": ajv.compile(ActionMessageSchema),
+};
+
+function validateAndCast<T extends keyof MessageTypeMapping>(obj: any, command: T, validator: ValidateFunction<BaseMessage>): MessageTypeMapping[T] | null {
+    if (validator(obj)) {
+        return obj as MessageTypeMapping[T];
+    }
+    logValidationErrors(validator);
+    return null;
+}
 
 /*
  * Deserialize a JSON string to a specific message type.
@@ -305,57 +325,14 @@ export function deserializeMessage(json: string): Message | null {
         return null;
     }
 
-    if (obj.command === "startup" && Validators.startup(obj)) {
-        return obj as StartupMessage;
-    } else if (obj.command === "startup") {
-        logValidationErrors(Validators.startup);
+    if (!Validators.hasOwnProperty(obj.command)) {
+        log.error(`Unknown command ${obj.command}`);
         return null;
     }
 
-    if (obj.command === "context" && Validators.context(obj)) {
-        return obj as ContextMessage;
-    } else if (obj.command === "context") {
-        logValidationErrors(Validators.context);
-        return null;
-    }
-
-    if (obj.command === "actions/register" && Validators.registerActions(obj)) {
-        return obj as RegisterActionsMessage;
-    } else if (obj.command === "actions/register") {
-        logValidationErrors(Validators.registerActions);
-        return null;
-    }
-
-    if (obj.command === "actions/unregister" && Validators.unregisterActions(obj)) {
-        return obj as UnregisterActionsMessage;
-    } else if (obj.command === "actions/unregister") {
-        logValidationErrors(Validators.unregisterActions);
-        return null;
-    }
-
-    if (obj.command === "actions/force" && Validators.forceAction(obj)) {
-        return obj as ForceActionMessage;
-    } else if (obj.command === "actions/force") {
-        logValidationErrors(Validators.forceAction);
-        return null;
-    }
-
-    if (obj.command === "action/result" && Validators.actionResult(obj)) {
-        return obj as ActionResultMessage;
-    } else if (obj.command === "action/result") {
-        logValidationErrors(Validators.actionResult);
-        return null;
-    }
-
-    if (obj.command === "action" && Validators.action(obj)) {
-        return obj as ActionMessage;
-    } else if (obj.command === "action") {
-        logValidationErrors(Validators.action);
-        return null;
-    }
-
-    log.error(`Unknown command ${obj.command}`);
-    return null;
+    const command : MessageType = obj.command as MessageType
+    const validator : ValidateFunction<BaseMessage> = Validators[command];
+    return validateAndCast(obj, command, validator);
 }
 
 /** Validate an Action's schema property */
