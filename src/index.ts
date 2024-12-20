@@ -7,6 +7,9 @@ import {log} from "./logging";
 import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {JippityHandler} from "./jippity-handler";
 
+// Load environment variables from .env file
+import "dotenv/config";
+
 // ***************************
 // * OpenAI API Client Setup *
 // ***************************
