@@ -35,7 +35,7 @@ export class JippityHandler {
         if (tools.length === 0) {
             tools = undefined;
         }
-        const response = await openai.chat.completions.create({
+        return openai.chat.completions.create({
             model: openaiModel,
             messages: [
                 ...this.openaiMessages
@@ -49,36 +49,37 @@ export class JippityHandler {
             top_p: 1,
             frequency_penalty: 0,
             presence_penalty: 0
-        });
-        assert(response.choices.length == 1);
-        const choice = response.choices[0];
-        if (choice.finish_reason === "stop") {
-            const content = choice.message.content;
-            assert(content, "Surely there would be content if the model stopped on its own");
-            log.info(`Jippity says: ${content}`);
-        } else if (choice.finish_reason === "tool_calls") {
-            const toolCalls = choice.message.tool_calls;
-            assert(toolCalls && toolCalls.length >= 1, "Why would the stop reason be tool_calls if there were no tool calls?");
-            const toolCall = toolCalls[0];
-            assert(toolCall.type === "function");
-            const action: ActionMessage = {
-                command: "action",
-                data: {
-                    id: toolCall.id,
-                    name: toolCall.function?.name,
-                    data: toolCall.function?.arguments,
+        }).then((response) => {
+            assert(response.choices.length == 1);
+            const choice = response.choices[0];
+            if (choice.finish_reason === "stop") {
+                const content = choice.message.content;
+                assert(content, "Surely there would be content if the model stopped on its own");
+                log.info(`Jippity says: ${content}`);
+            } else if (choice.finish_reason === "tool_calls") {
+                const toolCalls = choice.message.tool_calls;
+                assert(toolCalls && toolCalls.length >= 1, "Why would the stop reason be tool_calls if there were no tool calls?");
+                const toolCall = toolCalls[0];
+                assert(toolCall.type === "function");
+                const action: ActionMessage = {
+                    command: "action",
+                    data: {
+                        id: toolCall.id,
+                        name: toolCall.function?.name,
+                        data: toolCall.function?.arguments,
+                    }
                 }
+                send(action);
+                log.info(`Jippity wants to do the following action: ${JSON.stringify(action)}`);
+                this.pendingActionId = toolCall.id;
+            } else {
+                log.error(`OpenAI response finished with the following reason: ${choice.finish_reason}`)
+                this.openaiRequestInProgress = false;
+                throw new Error("I should be handling this case but I'm not"); // TODO: Handle this case
             }
-            send(action);
-            log.info(`Jippity wants to do the following action: ${JSON.stringify(action)}`);
-            this.pendingActionId = toolCall.id;
-        } else {
-            log.error(`OpenAI response finished with the following reason: ${choice.finish_reason}`)
+            this.openaiMessages.push(choice.message);
             this.openaiRequestInProgress = false;
-            throw new Error("I should be handling this case but I'm not"); // TODO: Handle this case
-        }
-        this.openaiMessages.push(choice.message);
-        this.openaiRequestInProgress = false;
+        });
     }
 
     public handleMessage(dataStr: string): boolean {
@@ -153,7 +154,7 @@ export class JippityHandler {
         };
         this.openaiMessages.push(context);
         if (!silent) {
-            setImmediate(this.callOpenAI);
+            this.callOpenAI();
         }
     }
 
@@ -178,7 +179,7 @@ export class JippityHandler {
         };
         this.openaiMessages.push(actionResult);
         this.pendingActionId = null;
-        setImmediate(this.callOpenAI);
+        this.callOpenAI();
     }
 
     /**
