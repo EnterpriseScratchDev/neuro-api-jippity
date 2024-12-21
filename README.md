@@ -22,10 +22,13 @@ If you have any problems with Jippity, please create a GitHub issue or message m
 2. Run `npm install` to install dependencies
 3. Run `npm start` to start the program
 
+If you are contributing to Jippity, please lint and format your code using `npm run lint` and `npm run format`.
+
 Jippity sends messages to all connected websockets, so a tool like [Insomnia](https://insomnia.rest/) can be used to see what he's sending if there's a problem with your game.
 
-## Configuration Environment Variables
+## Configuration Using Environment Variables
 This tool is configured exclusively with environment variables.
+Environment variables will be loaded from the `.env` file in the root of this repository, if present.
 A config file may be added in the future.
 
 | Environment Variable  | Description                                                                                                                                     | Required | Example       |

@@ -1,13 +1,20 @@
-import {Action, ActionMessage, ActionResultMessage, deserializeMessage, validateActionSchema} from "./api-types";
-import {ChatCompletionMessageParam, ChatCompletionTool} from "openai/resources/chat/completions";
-import {openai, openaiModel, send, SYSTEM_MESSAGE} from "./index";
-import {log} from "./logging";
+import {
+    Action,
+    ActionMessage,
+    ActionResultMessage,
+    deserializeMessage,
+    validateActionSchema
+} from "./api-types";
+import { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import { openai, openaiModel, send, SYSTEM_MESSAGE } from "./index";
+import { log } from "./logging";
 import assert from "node:assert";
+import OpenAI from "openai";
+import FunctionParameters = OpenAI.FunctionParameters;
 
 // ******************************
 // * AI and Game State Tracking *
 // ******************************
-
 
 // Stores the state of the game and the AI
 export class JippityHandler {
@@ -35,51 +42,59 @@ export class JippityHandler {
         if (tools.length === 0) {
             tools = undefined;
         }
-        return openai.chat.completions.create({
-            model: openaiModel,
-            messages: [
-                ...this.openaiMessages
-            ],
-            response_format: {
-                type: "text"
-            },
-            tools: tools,
-            temperature: 1,
-            max_completion_tokens: 2048,
-            top_p: 1,
-            frequency_penalty: 0,
-            presence_penalty: 0
-        }).then((response) => {
-            assert(response.choices.length == 1);
-            const choice = response.choices[0];
-            if (choice.finish_reason === "stop") {
-                const content = choice.message.content;
-                assert(content, "Surely there would be content if the model stopped on its own");
-                log.info(`Jippity says: ${content}`);
-            } else if (choice.finish_reason === "tool_calls") {
-                const toolCalls = choice.message.tool_calls;
-                assert(toolCalls && toolCalls.length >= 1, "Why would the stop reason be tool_calls if there were no tool calls?");
-                const toolCall = toolCalls[0];
-                assert(toolCall.type === "function");
-                const action: ActionMessage = {
-                    command: "action",
-                    data: {
-                        id: toolCall.id,
-                        name: toolCall.function?.name,
-                        data: toolCall.function?.arguments,
-                    }
+        return openai.chat.completions
+            .create({
+                model: openaiModel,
+                messages: [...this.openaiMessages],
+                response_format: {
+                    type: "text"
+                },
+                tools: tools,
+                temperature: 1,
+                max_completion_tokens: 2048,
+                top_p: 1,
+                frequency_penalty: 0,
+                presence_penalty: 0
+            })
+            .then((response) => {
+                assert(response.choices.length == 1);
+                const choice = response.choices[0];
+                if (choice.finish_reason === "stop") {
+                    const content = choice.message.content;
+                    assert(
+                        content,
+                        "Surely there would be content if the model stopped on its own"
+                    );
+                    log.info(`Jippity says: ${content}`);
+                } else if (choice.finish_reason === "tool_calls") {
+                    const toolCalls = choice.message.tool_calls;
+                    assert(
+                        toolCalls && toolCalls.length >= 1,
+                        "Why would the stop reason be tool_calls if there were no tool calls?"
+                    );
+                    const toolCall = toolCalls[0];
+                    assert(toolCall.type === "function");
+                    const action: ActionMessage = {
+                        command: "action",
+                        data: {
+                            id: toolCall.id,
+                            name: toolCall.function?.name,
+                            data: toolCall.function?.arguments
+                        }
+                    };
+                    send(action);
+                    log.info(`Jippity wants to do the following action: ${JSON.stringify(action)}`);
+                    this.pendingActionId = toolCall.id;
+                } else {
+                    log.error(
+                        `OpenAI response finished with the following reason: ${choice.finish_reason}`
+                    );
+                    this.openaiRequestInProgress = false;
+                    throw new Error("I should be handling this case but I'm not"); // TODO: Handle this case
                 }
-                send(action);
-                log.info(`Jippity wants to do the following action: ${JSON.stringify(action)}`);
-                this.pendingActionId = toolCall.id;
-            } else {
-                log.error(`OpenAI response finished with the following reason: ${choice.finish_reason}`)
+                this.openaiMessages.push(choice.message);
                 this.openaiRequestInProgress = false;
-                throw new Error("I should be handling this case but I'm not"); // TODO: Handle this case
-            }
-            this.openaiMessages.push(choice.message);
-            this.openaiRequestInProgress = false;
-        });
+            });
     }
 
     public handleMessage(dataStr: string): boolean {
@@ -89,7 +104,7 @@ export class JippityHandler {
         }
 
         if (!this.isStarted && message.command !== "startup") {
-            log.warn(`Received "${message.command}" command before receiving a \"startup\" command`);
+            log.warn(`Received "${message.command}" command before receiving a "startup" command`);
         }
 
         switch (message.command) {
@@ -97,12 +112,11 @@ export class JippityHandler {
                 this.isStarted = true;
                 this.game = message.game;
                 this.actions = [];
-                log.info(`Set game to \"${message.game}\" and cleared all registered actions`);
-                const game_started: ChatCompletionMessageParam = {
+                log.info(`Set game to "${message.game}" and cleared all registered actions`);
+                this.openaiMessages.push({
                     role: "user",
                     content: `You are now playing ${message.game}`
-                };
-                this.openaiMessages.push(game_started);
+                } as ChatCompletionMessageParam);
                 return true;
             case "actions/register":
                 this.registerActions(message.data.actions);
@@ -114,13 +128,15 @@ export class JippityHandler {
                 this.addContext(message.data.message, message.data.silent);
                 return true;
             case "actions/force":
-                log.error("Handling of the \"actions/force\" command is not yet implemented");
+                log.error('Handling of the "actions/force" command is not yet implemented');
                 return false;
             case "action/result":
                 this.addActionResult(message);
                 return true;
             case "action":
-                log.error("The \"action\" command should be sent from the server (Neuro) to the client (the game), not the other way around.");
+                log.error(
+                    'The "action" command should be sent from the server (Neuro) to the client (the game), not the other way around.'
+                );
                 return false;
         }
     }
@@ -128,8 +144,10 @@ export class JippityHandler {
     private registerActions(actions: Action[]) {
         let successfulRegistrations = 0;
         for (const action of actions) {
-            if (this.actions.find(x => x.name === action.name)) {
-                log.warn(`Attempted to register action "${action.name}" when there is already an action with that name`);
+            if (this.actions.find((x) => x.name === action.name)) {
+                log.warn(
+                    `Attempted to register action "${action.name}" when there is already an action with that name`
+                );
                 continue;
             }
             if (!validateActionSchema(action)) {
@@ -143,11 +161,15 @@ export class JippityHandler {
     }
 
     private unregisterActions(action_names: string[]) {
-        this.actions = this.actions.filter(action => !action_names.includes(action.name));
+        this.actions = this.actions.filter((action) => !action_names.includes(action.name));
         log.info(`Unregistered actions: ${action_names}`);
     }
 
     private addContext(message: string, silent: boolean) {
+        assert(
+            !this.pendingActionId,
+            "Received a context message while waiting for an action result"
+        );
         const context: ChatCompletionMessageParam = {
             role: "user",
             content: message
@@ -166,9 +188,10 @@ export class JippityHandler {
             log.error("Received an action result with an ID that doesn't match the pending action");
             return;
         }
-        let content: any = {
-            success: message.data.success
-        }
+        const content = {
+            success: message.data.success,
+            message: undefined as string | undefined
+        };
         if (message.data.message) {
             content.message = message.data.message;
         }
@@ -189,15 +212,14 @@ export class JippityHandler {
      * @returns A tool object formatted for OpenAI's API.
      */
     private convertActionToTool(action: Action): ChatCompletionTool {
-        const {name, description, schema} = action;
+        const { name, description, schema } = action;
         return {
             type: "function",
             function: {
                 name,
                 description,
-                parameters: schema || {},
-            },
+                parameters: (schema as FunctionParameters) || {}
+            }
         };
     }
 }
-

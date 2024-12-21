@@ -1,18 +1,16 @@
-import Ajv, {JSONSchemaType, ValidateFunction} from "ajv";
-import * as metaSchema from "ajv/lib/refs/json-schema-draft-07.json";
-import {log} from "./logging";
+import Ajv, { AnySchema, JSONSchemaType, ValidateFunction } from "ajv";
+import { log } from "./logging";
 
 const ajv = new Ajv();
-// ajv.addMetaSchema(metaSchema);
 
-// TODO: Disallow these keywords
-const disallowedSchemaKeywords = [
-    "$anchor", "$comment", "$defs", "$dynamicAnchor", "$dynamicRef", "$id", "$ref", "$schema", "$vocabulary",
-    "additionalProperties", "allOf", "anyOf", "contentEncoding", "contentMediaType", "contentSchema",
-    "dependentRequired", "dependentSchemas", "deprecated", "description", "else", "if", "maxProperties",
-    "minProperties", "not", "oneOf", "patternProperties", "readOnly", "then", "title", "unevaluatedItems",
-    "unevaluatedProperties", "writeOnly"
-];
+// TODO: Warn about using these keywords
+// const disallowedSchemaKeywords = [
+//     "$anchor", "$comment", "$defs", "$dynamicAnchor", "$dynamicRef", "$id", "$ref", "$schema", "$vocabulary",
+//     "additionalProperties", "allOf", "anyOf", "contentEncoding", "contentMediaType", "contentSchema",
+//     "dependentRequired", "dependentSchemas", "deprecated", "description", "else", "if", "maxProperties",
+//     "minProperties", "not", "oneOf", "patternProperties", "readOnly", "then", "title", "unevaluatedItems",
+//     "unevaluatedProperties", "writeOnly"
+// ];
 // for (const keyword of disallowedSchemaKeywords) {
 //     ajv.removeKeyword(keyword);
 // }
@@ -40,22 +38,20 @@ export interface Action {
      * @example "join_friend_lobby"
      * @example "use_item"
      */
-    name: string,
+    name: string;
     /**
      * A plaintext description of what this action does.
      * <b>This information will be directly received by Neuro.</b>
      */
-    description: string,
+    description: string;
     /**
      * A valid simple JSON schema object that describes how the response data should look like.
      * If your action does not have any parameters, you can omit this field or set it to `{}`.
      */
-    schema?: {
-        [key: string]: any
-    }
+    schema?: AnySchema;
 }
 
-const isValidJsonSchema = (schema: any): boolean => {
+const isValidJsonSchema = (schema: AnySchema): boolean => {
     if (ajv.validateSchema(schema) as boolean) {
         return true;
     }
@@ -68,48 +64,48 @@ const isValidJsonSchema = (schema: any): boolean => {
 /** Log validation errors if any */
 const logValidationErrors = (validator: ValidateFunction): void => {
     if (validator.errors) {
-        log.error(`Validation failed: ${ajv.errorsText(validator.errors, {dataVar: "."})}`);
+        log.error(`Validation failed: ${ajv.errorsText(validator.errors, { dataVar: "." })}`);
     }
 };
 
 interface BaseMessage {
-    command: string
+    command: string;
 }
 
 export interface StartupMessage extends BaseMessage {
-    command: "startup",
-    game: string
+    command: "startup";
+    game: string;
 }
 
 const StartupMessageSchema: JSONSchemaType<StartupMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "startup"},
-        game: {type: "string"}
+        command: { type: "string", const: "startup" },
+        game: { type: "string" }
     },
     required: ["command", "game"],
     additionalProperties: false
 };
 
 export interface ContextMessage extends BaseMessage {
-    command: "context",
-    game: string,
+    command: "context";
+    game: string;
     data: {
-        message: string,
-        silent: boolean
-    }
+        message: string;
+        silent: boolean;
+    };
 }
 
 const ContextMessageSchema: JSONSchemaType<ContextMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "context"},
-        game: {type: "string"},
+        command: { type: "string", const: "context" },
+        game: { type: "string" },
         data: {
             type: "object",
             properties: {
-                message: {type: "string"},
-                silent: {type: "boolean"}
+                message: { type: "string" },
+                silent: { type: "boolean" }
             },
             required: ["message", "silent"],
             additionalProperties: false
@@ -120,18 +116,18 @@ const ContextMessageSchema: JSONSchemaType<ContextMessage> = {
 };
 
 export interface RegisterActionsMessage extends BaseMessage {
-    command: "actions/register",
-    game: string,
+    command: "actions/register";
+    game: string;
     data: {
-        actions: Action[]
-    }
+        actions: Action[];
+    };
 }
 
 const RegisterActionsMessageSchema: JSONSchemaType<RegisterActionsMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "actions/register"},
-        game: {type: "string"},
+        command: { type: "string", const: "actions/register" },
+        game: { type: "string" },
         data: {
             type: "object",
             properties: {
@@ -140,8 +136,8 @@ const RegisterActionsMessageSchema: JSONSchemaType<RegisterActionsMessage> = {
                     items: {
                         type: "object",
                         properties: {
-                            name: {type: "string"},
-                            description: {type: "string"},
+                            name: { type: "string" },
+                            description: { type: "string" },
                             schema: {
                                 type: "object",
                                 nullable: true,
@@ -162,22 +158,22 @@ const RegisterActionsMessageSchema: JSONSchemaType<RegisterActionsMessage> = {
 };
 
 export interface UnregisterActionsMessage extends BaseMessage {
-    command: "actions/unregister",
-    game: string,
+    command: "actions/unregister";
+    game: string;
     data: {
-        action_names: string[]
-    }
+        action_names: string[];
+    };
 }
 
 const UnregisterActionsMessageSchema: JSONSchemaType<UnregisterActionsMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "actions/unregister"},
-        game: {type: "string"},
+        command: { type: "string", const: "actions/unregister" },
+        game: { type: "string" },
         data: {
             type: "object",
             properties: {
-                action_names: {type: "array", items: {type: "string"}}
+                action_names: { type: "array", items: { type: "string" } }
             },
             required: ["action_names"],
             additionalProperties: false
@@ -188,28 +184,28 @@ const UnregisterActionsMessageSchema: JSONSchemaType<UnregisterActionsMessage> =
 };
 
 export interface ForceActionMessage extends BaseMessage {
-    command: "actions/force",
-    game: string,
+    command: "actions/force";
+    game: string;
     data: {
-        state?: string,
-        query: string,
-        ephemeral_context?: boolean, // Defaults to false
-        action_names: string[]
-    }
+        state?: string;
+        query: string;
+        ephemeral_context?: boolean; // Defaults to false
+        action_names: string[];
+    };
 }
 
 const ForceActionMessageSchema: JSONSchemaType<ForceActionMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "actions/force"},
-        game: {type: "string"},
+        command: { type: "string", const: "actions/force" },
+        game: { type: "string" },
         data: {
             type: "object",
             properties: {
-                state: {type: "string", nullable: true},
-                query: {type: "string"},
-                ephemeral_context: {type: "boolean", nullable: true},
-                action_names: {type: "array", items: {type: "string"}}
+                state: { type: "string", nullable: true },
+                query: { type: "string" },
+                ephemeral_context: { type: "boolean", nullable: true },
+                action_names: { type: "array", items: { type: "string" } }
             },
             required: ["query", "action_names"],
             additionalProperties: false
@@ -220,26 +216,26 @@ const ForceActionMessageSchema: JSONSchemaType<ForceActionMessage> = {
 };
 
 export interface ActionResultMessage extends BaseMessage {
-    command: "action/result",
-    game: string,
+    command: "action/result";
+    game: string;
     data: {
-        id: string,
-        success: boolean,
-        message?: string
-    }
+        id: string;
+        success: boolean;
+        message?: string;
+    };
 }
 
 const ActionResultMessageSchema: JSONSchemaType<ActionResultMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "action/result"},
-        game: {type: "string"},
+        command: { type: "string", const: "action/result" },
+        game: { type: "string" },
         data: {
             type: "object",
             properties: {
-                id: {type: "string"},
-                success: {type: "boolean"},
-                message: {type: "string", nullable: true}
+                id: { type: "string" },
+                success: { type: "boolean" },
+                message: { type: "string", nullable: true }
             },
             required: ["id", "success"],
             additionalProperties: false
@@ -250,24 +246,24 @@ const ActionResultMessageSchema: JSONSchemaType<ActionResultMessage> = {
 };
 
 export interface ActionMessage extends BaseMessage {
-    command: "action",
+    command: "action";
     data: {
-        id: string,
-        name: string,
-        data?: string
-    }
+        id: string;
+        name: string;
+        data?: string;
+    };
 }
 
 const ActionMessageSchema: JSONSchemaType<ActionMessage> = {
     type: "object",
     properties: {
-        command: {type: "string", const: "action"},
+        command: { type: "string", const: "action" },
         data: {
             type: "object",
             properties: {
-                id: {type: "string"},
-                name: {type: "string"},
-                data: {type: "string", nullable: true}
+                id: { type: "string" },
+                name: { type: "string" },
+                data: { type: "string", nullable: true }
             },
             required: ["id", "name"],
             additionalProperties: false
@@ -278,29 +274,33 @@ const ActionMessageSchema: JSONSchemaType<ActionMessage> = {
 };
 
 type MessageTypeMapping = {
-    "startup": StartupMessage,
-    "context": ContextMessage,
-    "actions/register": RegisterActionsMessage,
-    "actions/unregister": UnregisterActionsMessage,
-    "actions/force": ForceActionMessage,
-    "action/result": ActionResultMessage,
-    "action": ActionMessage,
+    startup: StartupMessage;
+    context: ContextMessage;
+    "actions/register": RegisterActionsMessage;
+    "actions/unregister": UnregisterActionsMessage;
+    "actions/force": ForceActionMessage;
+    "action/result": ActionResultMessage;
+    action: ActionMessage;
 };
 
 type MessageType = keyof MessageTypeMapping;
 
 /** Validators */
 export const Validators: Record<MessageType, ValidateFunction<BaseMessage>> = {
-    "startup": ajv.compile(StartupMessageSchema),
-    "context": ajv.compile(ContextMessageSchema),
+    startup: ajv.compile(StartupMessageSchema),
+    context: ajv.compile(ContextMessageSchema),
     "actions/register": ajv.compile(RegisterActionsMessageSchema),
     "actions/unregister": ajv.compile(UnregisterActionsMessageSchema),
     "actions/force": ajv.compile(ForceActionMessageSchema),
     "action/result": ajv.compile(ActionResultMessageSchema),
-    "action": ajv.compile(ActionMessageSchema),
+    action: ajv.compile(ActionMessageSchema)
 };
 
-function validateAndCast<T extends keyof MessageTypeMapping>(obj: any, command: T, validator: ValidateFunction<BaseMessage>): MessageTypeMapping[T] | null {
+function validateAndCast<T extends keyof MessageTypeMapping>(
+    obj: unknown,
+    _command: T,
+    validator: ValidateFunction<BaseMessage>
+): MessageTypeMapping[T] | null {
     if (validator(obj)) {
         return obj as MessageTypeMapping[T];
     }
@@ -308,11 +308,11 @@ function validateAndCast<T extends keyof MessageTypeMapping>(obj: any, command: 
     return null;
 }
 
-/*
+/**
  * Deserialize a JSON string to a specific message type.
  */
 export function deserializeMessage(json: string): Message | null {
-    let obj: any;
+    let obj;
     try {
         obj = JSON.parse(json);
     } catch (e) {
@@ -321,17 +321,17 @@ export function deserializeMessage(json: string): Message | null {
     }
 
     if (!obj.command) {
-        log.error("Message is missing the \"command\" property");
+        log.error('Message is missing the "command" property');
         return null;
     }
 
-    if (!Validators.hasOwnProperty(obj.command)) {
+    if (!(obj.command in Validators)) {
         log.error(`Unknown command ${obj.command}`);
         return null;
     }
 
-    const command : MessageType = obj.command as MessageType
-    const validator : ValidateFunction<BaseMessage> = Validators[command];
+    const command: MessageType = obj.command as MessageType;
+    const validator: ValidateFunction<BaseMessage> = Validators[command];
     return validateAndCast(obj, command, validator);
 }
 
