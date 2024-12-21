@@ -1,11 +1,11 @@
-import {RawData, WebSocket, WebSocketServer} from "ws";
+import { RawData, WebSocket, WebSocketServer } from "ws";
 import util from "util";
 import assert from "node:assert";
-import {Message} from "./api-types";
+import { Message } from "./api-types";
 import OpenAI from "openai";
-import {log} from "./logging";
-import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
-import {JippityHandler} from "./jippity-handler";
+import { log } from "./logging";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { JippityHandler } from "./jippity-handler";
 
 // Load environment variables from .env file
 import "dotenv/config";
@@ -14,18 +14,19 @@ import "dotenv/config";
 // * OpenAI API Client Setup *
 // ***************************
 export const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-})
-export const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini"
+    apiKey: process.env.OPENAI_API_KEY
+});
+export const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 // The initial "system" message seen by the AI
 // Feel free to edit this to change
 export const SYSTEM_MESSAGE: ChatCompletionMessageParam = {
-    "role": "system",
-    "content": [
+    role: "system",
+    content: [
         {
-            "type": "text",
-            "text": "You are Jippity, an artificial intelligence designed to play video games on a livestream.\n" +
+            type: "text",
+            text:
+                "You are Jippity, an artificial intelligence designed to play video games on a livestream.\n" +
                 "The messages you receive contain information about what's happening in the game." +
                 "You will use function calls to perform game actions. " +
                 "Do not attempt to make in-game actions in your text responses. " +
@@ -36,7 +37,7 @@ export const SYSTEM_MESSAGE: ChatCompletionMessageParam = {
                 "Try to limit your monologues to a few sentences at a time."
         }
     ]
-}
+};
 
 // Stores the state of the game and the AI
 const jippityHandler = new JippityHandler();
@@ -45,14 +46,15 @@ const jippityHandler = new JippityHandler();
 // Defaults to 10 seconds, enforces a minimum of 1 second for the sake of your wallet
 const jippityIntervalMs = Math.max(
     parseInt(process.env.JIPPITY_INTERVAL_MS ?? "", 10) || 10_000,
-    1_000);
+    1_000
+);
 
 // *********************************************
 // * WebSocketServer and WebSocket connections *
 // *********************************************
 
 const wssPort = parseInt(process.env.WSS_PORT ?? "", 10) || 8000;
-const wss = new WebSocketServer({port: wssPort});
+const wss = new WebSocketServer({ port: wssPort });
 
 // Array of active WebSocket connections
 let wsConnections: WebSocket[] = [];
@@ -61,23 +63,27 @@ wss.on("listening", () => {
     log.info(`WebSocketServer listening on port ${wssPort}`);
 });
 
-wss.on("error", error => {
+wss.on("error", (error) => {
     log.error("WebSocketServer error", error);
-})
+});
 
-wss.on("connection", ws => {
+wss.on("connection", (ws) => {
     // Store the WebSocket connection
     wsConnections.push(ws);
     log.info(`New WebSocket connection; there are now ${wsConnections.length} connections`);
 
     ws.on("close", (code, reason) => {
-        wsConnections = wsConnections.filter(x => x !== ws);
-        log.info(`WebSocket connection closed; code: ${code}, reason: \"${reason}\"; there are now ${wsConnections.length} connections`);
+        wsConnections = wsConnections.filter((x) => x !== ws);
+        log.info(
+            `WebSocket connection closed; code: ${code}, reason: "${reason}"; there are now ${wsConnections.length} connections`
+        );
     });
 
     ws.on("message", (data: RawData, isBinary: boolean) => {
         if (isBinary) {
-            log.error("WebSocket received a message with binary data; the server (Neuro) can only handle text");
+            log.error(
+                "WebSocket received a message with binary data; the server (Neuro) can only handle text"
+            );
             return;
         }
         const dataStr = data.toString();
@@ -88,7 +94,7 @@ wss.on("connection", ws => {
             log.error("Error thrown from handleMessage", e);
             return;
         }
-    })
+    });
 });
 
 /**
@@ -96,8 +102,8 @@ wss.on("connection", ws => {
  * @param message the message to send
  */
 export function send(message: Message) {
-    assert(wsConnections, "send called with wsConnections uninitialized")
-    assert(message.command, "Messages must always have a \"command\" property");
+    assert(wsConnections, "send called with wsConnections uninitialized");
+    assert(message.command, 'Messages must always have a "command" property');
 
     if (wsConnections.length == 0) {
         log.warn("send function called with no active WebSocket connections");
@@ -105,8 +111,8 @@ export function send(message: Message) {
     }
 
     const messageStr = JSON.stringify(message);
-    for (let ws of wsConnections) {
-        ws.send(messageStr, err => {
+    for (const ws of wsConnections) {
+        ws.send(messageStr, (err) => {
             if (err) {
                 log.error("Error sending message to WebSocket connection", err);
             }
@@ -119,5 +125,5 @@ setInterval(() => {
         log.debug("Waiting for action result...");
         return;
     }
-    jippityHandler.callOpenAI().catch((e : Error) => log.error("Error from callOpenAI: ", e))
+    jippityHandler.callOpenAI().catch((e: Error) => log.error("Error from callOpenAI: ", e));
 }, jippityIntervalMs);
