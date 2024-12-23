@@ -98,10 +98,12 @@ export class JippityHandler {
     }
 
     public handleMessage(dataStr: string): boolean {
-        const message = deserializeMessage(dataStr);
-        if (message === null) {
+        const messageResult = deserializeMessage(dataStr);
+        if (messageResult.isErr()) {
+            log.error(`Failed to deserialize message: ${messageResult.error}`);
             return false;
         }
+        const message = messageResult.value;
 
         if (!this.isStarted && message.command !== "startup") {
             log.warn(`Received "${message.command}" command before receiving a "startup" command`);

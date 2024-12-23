@@ -1,5 +1,6 @@
 import Ajv, { AnySchema, JSONSchemaType, ValidateFunction } from "ajv";
-import { log } from "./logging";
+import { err, ok, Result } from "neverthrow";
+import { errorOrUndefined } from "./utils";
 
 const ajv = new Ajv();
 
@@ -51,23 +52,9 @@ export interface Action {
     schema?: AnySchema;
 }
 
-const isValidJsonSchema = (schema: AnySchema): boolean => {
-    if (ajv.validateSchema(schema) as boolean) {
-        return true;
-    }
-    if (ajv.errors) {
-        log.error("Validation failed: ", ajv.errorsText(ajv.errors));
-    }
-    return false;
-};
-
-/** Log validation errors if any */
-const logValidationErrors = (validator: ValidateFunction): void => {
-    if (validator.errors) {
-        log.error(`Validation failed: ${ajv.errorsText(validator.errors, { dataVar: "." })}`);
-    }
-};
-
+/**
+ * Base interface for all messages sent and received by the server.
+ */
 interface BaseMessage {
     command: string;
 }
@@ -298,36 +285,35 @@ export const Validators: Record<MessageType, ValidateFunction<BaseMessage>> = {
 
 function validateAndCast<T extends keyof MessageTypeMapping>(
     obj: unknown,
-    _command: T,
+    command: T,
     validator: ValidateFunction<BaseMessage>
-): MessageTypeMapping[T] | null {
+): Result<MessageTypeMapping[T], MessageDeserializationError> {
     if (validator(obj)) {
-        return obj as MessageTypeMapping[T];
+        return ok(obj as MessageTypeMapping[T]);
     }
-    logValidationErrors(validator);
-    return null;
+    // logValidationErrors(validator);
+    return err(new MessageDeserializationError(`Validation of command "${command}" failed: ${ajv.errorsText(validator.errors)}`));
 }
 
 /**
  * Deserialize a JSON string to a specific message type.
+ *
+ * **Does not validate action schemas for {@link RegisterActionsMessage}.**
  */
-export function deserializeMessage(json: string): Message | null {
+export function deserializeMessage(json: string): Result<Message, MessageDeserializationError> {
     let obj;
     try {
         obj = JSON.parse(json);
     } catch (e) {
-        log.error("Message is not valid JSON: ", e);
-        return null;
+        return err(new MessageDeserializationError("Message is not valid JSON", errorOrUndefined(e)));
     }
 
     if (!obj.command) {
-        log.error('Message is missing the "command" property');
-        return null;
+        return err(new MessageDeserializationError("Message is missing the \"command\" property"));
     }
 
     if (!(obj.command in Validators)) {
-        log.error(`Unknown command ${obj.command}`);
-        return null;
+        return err(new MessageDeserializationError(`Unknown command "${obj.command}"`));
     }
 
     const command: MessageType = obj.command as MessageType;
@@ -336,21 +322,22 @@ export function deserializeMessage(json: string): Message | null {
 }
 
 /** Validate an Action's schema property */
-export function validateActionSchema(action: Action): boolean {
+export function validateActionSchema(action: Action): Result<null, MessageDeserializationError> {
     if (!action.schema || Object.keys(action.schema).length === 0) {
         // No schema to validate
-        return true;
+        return ok(null);
     }
-    const valid = isValidJsonSchema(action.schema);
-    if (!valid) {
-        console.error("Invalid schema:", ajv.errorsText());
+    if (!ajv.validateSchema(action.schema) as boolean) {
+        const errorMessage = ajv.errorsText() ?? "Unknown error";
+        return err(new MessageDeserializationError("Invalid Action schema", new MessageDeserializationError(errorMessage)));
     }
-    return valid;
+    return ok(null);
 }
 
 export class MessageDeserializationError extends Error {
-    constructor(message: string) {
+    constructor(message: string, cause?: Error) {
         super(message);
         this.name = "MessageDeserializationError";
+        this.cause = cause;
     }
 }
