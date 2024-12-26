@@ -9,6 +9,7 @@ import { JippityHandler } from "./jippity-handler";
 
 // Load environment variables from .env file
 import "dotenv/config";
+import { sleep } from "./utils";
 
 // ***************************
 // * OpenAI API Client Setup *
@@ -89,21 +90,27 @@ wss.on("connection", (ws) => {
         const dataStr = data.toString();
         log.debug(`Message received: ${util.inspect(dataStr)}`);
         try {
-            jippityHandler.handleMessage(dataStr);
+            jippityHandler.receiveMessage(dataStr);
         } catch (e) {
             log.error("Error thrown from handleMessage", e);
             return;
         }
+    });
+
+    ws.on("error", (error) => {
+        log.error("WebSocket error", error);
     });
 });
 
 /**
  * Send a message to all active WebSocket connections.
  * @param message the message to send
+ *
+ * **Note**: Errors sending messages are logged, but errors are not thrown.
  */
 export function send(message: Message) {
     assert(wsConnections, "send called with wsConnections uninitialized");
-    assert(message.command, 'Messages must always have a "command" property');
+    assert(message.command, "Messages must always have a \"command\" property");
 
     if (wsConnections.length == 0) {
         log.warn("send function called with no active WebSocket connections");
@@ -120,10 +127,60 @@ export function send(message: Message) {
     }
 }
 
-setInterval(() => {
-    if (jippityHandler.pendingActionId) {
-        log.debug("Waiting for action result...");
-        return;
+// setInterval(() => {
+//     if (jippityHandler.pendingActionId) {
+//         log.debug("Waiting for action result...");
+//         return;
+//     }
+//     jippityHandler.callOpenAI().catch((e: Error) => log.error("Error from callOpenAI:", e));
+// }, jippityIntervalMs);
+
+async function main() {
+    const idleTime = 5_000;
+
+    while (jippityHandler.state.id !== "state/exiting") {
+        switch (jippityHandler.state.id) {
+            case "state/thinking":
+                log.debug(`Jippity is thinking... (sleeping for ${idleTime / 1000} seconds)`);
+                await sleep(idleTime);
+                break;
+            case "state/waiting-for-game-startup":
+                log.debug(`Waiting for game startup... (sleeping for ${idleTime / 1000} seconds)`);
+                await sleep(idleTime);
+                break;
+            case "state/pending-action":
+                log.debug(`Waiting for action result... (sleeping for ${idleTime / 1000} seconds)`);
+                await sleep(idleTime);
+                break;
+            case "state/pending-forced-action":
+                log.debug(
+                    `Waiting for forced action result... (sleeping for ${idleTime / 1000} seconds)`
+                );
+                await sleep(idleTime);
+                break;
+            case "state/idle":
+                if (jippityHandler.messageQueue.isNotEmpty()) {
+                    log.debug("Processing message queue...");
+                    jippityHandler.processMessageQueue();
+                } else {
+                    // TODO: Add a random chance for Jippity to talk
+                    if (Math.random() < 0.50) {
+                        log.debug(
+                            `Idle... (activating the AI then sleeping for ${idleTime / 1000} seconds)`
+                        );
+                        await jippityHandler.callOpenAI();
+                        await sleep(idleTime);
+                    } else {
+                        log.debug(`Idle... (sleeping for ${idleTime / 1000} seconds)`);
+                        await sleep(idleTime);
+                    }
+                }
+                break;
+            default:
+                log.error(`Unhandled state: ${JSON.stringify(jippityHandler.state)}`);
+                break;
+        }
     }
-    jippityHandler.callOpenAI().catch((e: Error) => log.error("Error from callOpenAI: ", e));
-}, jippityIntervalMs);
+}
+
+main().then(() => log.info("Main function completed"));

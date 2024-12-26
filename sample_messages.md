@@ -95,3 +95,17 @@ These messages can be sent to Jippity for testing purposes.
   }
 }
 ```
+
+### `actions/force`: Starving
+```json
+{
+  "command": "actions/force",
+  "game": "Project Zomboid",
+  "data": {
+    "state": "You are carrying the following items: can_of_soda, can_of_beans, dead_rat, rusty_shovel",
+    "query": "You are starving and must eat something as soon as possible",
+    "ephemeral_context": false,
+    "action_names": ["use_item"]
+  }
+}
+```
