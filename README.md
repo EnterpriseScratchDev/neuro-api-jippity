@@ -40,8 +40,15 @@ A config file may be added in the future.
 | `JIPPITY_INTERVAL_MS` | The interval in milliseconds before Jippity will say/do something unprompted.<br/>Defaults to 10 seconds, has a hard-coded minimum of 1 second. | No       | `10000`       |
 
 ## Known Issues
-- `actions/force` is not implemented. This will be implemented in the very near future.
 - Old messages are not cleared from the AI's "memory", so the context window will eventually fill up, leading to a crash.
   The token limit is currently hard-coded to 2048.
-- A transitive dependency seemingly used for JSON schema validation is deprecated.
-  It's not causing any problems, but it causes a warning to be displayed on startup.
+
+## Implementation Details
+- Multiple websocket clients (i.e. games) can connect to Jippity at the same time.
+  Jippity can receive messages from any client and will send messages to all clients.
+  This behavior matches Randy.
+- There is no guarantee that Jippity will respond to an `actions/force` message in a timely manner.
+- When a forced action has a non-success result, Jippity won't necessarily retry it.
+  The specification says that Neuro will immediately retry in this scenario.
+- The `ephemeral_context` property of force action messages is treated as if it was always `false`.
+  This may result in the AI getting confused if its important for context to be hidden after the action is taken.
