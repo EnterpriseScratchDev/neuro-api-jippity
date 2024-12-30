@@ -90,7 +90,7 @@ export class JippityHandler {
                     this.state = { id: "state/idle" }
                     return;
                 } else if (choice.finish_reason === "tool_calls") {
-                    const toolCalls = choice.message.tool_calls;
+                    let toolCalls = choice.message.tool_calls;
                     assert(
                         toolCalls && toolCalls.length >= 1,
                         "Why would the stop reason be tool_calls if there were no tool calls?"
@@ -99,6 +99,8 @@ export class JippityHandler {
                         log.warn(
                             `OpenAI response finished with multiple tool calls. Only the first will be considered.`
                         );
+                        toolCalls = [toolCalls[0]];
+                        choice.message.tool_calls = [toolCalls[0]];
                     }
                     const toolCall = toolCalls[0];
                     assert(toolCall.type === "function");
