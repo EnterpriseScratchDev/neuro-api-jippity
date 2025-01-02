@@ -164,16 +164,11 @@ async function main() {
                     jippityHandler.processMessageQueue();
                 } else {
                     // TODO: Add a random chance for Jippity to talk
-                    if (Math.random() < 0.50) {
-                        log.debug(
-                            `Idle... (activating the AI then sleeping for ${idleTime / 1000} seconds)`
-                        );
-                        await jippityHandler.callOpenAI();
-                        await sleep(idleTime);
-                    } else {
-                        log.debug(`Idle... (sleeping for ${idleTime / 1000} seconds)`);
-                        await sleep(idleTime);
-                    }
+                    log.debug(
+                        `Idle... (sleeping for ${idleTime / 1000} seconds then activating the AI)`
+                    );
+                    await sleep(idleTime);
+                    await jippityHandler.callOpenAI();
                 }
                 break;
             default:
