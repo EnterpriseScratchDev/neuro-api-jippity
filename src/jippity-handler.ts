@@ -181,10 +181,13 @@ export class JippityHandler {
             return false;
         }
 
+        // If an action is pending, disallow all commands apart from action/result, actions/register, and actions/unregister
         if (
             (this.state.id === "state/pending-action" ||
                 this.state.id === "state/pending-forced-action") &&
-            message.command !== "action/result"
+            message.command !== "action/result" &&
+            message.command !== "actions/register" &&
+            message.command !== "actions/unregister"
         ) {
             log.error(`Received "${message.command}" command while waiting for an action result`);
             return false;
