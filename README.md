@@ -19,8 +19,9 @@ If you have any problems with Jippity, please create a GitHub issue or message m
 
 ## Installing and Running Jippity
 1. Clone or download this repository
-2. Run `npm install` to install dependencies
-3. Run `npm start` to start the program
+2. Run `cd backend` to enter the backend directory
+3. Run `npm install` to install dependencies
+4. Run `npm start` to start the program
 
 If you are contributing to Jippity, please lint and format your code using `npm run lint` and `npm run format`.
 
