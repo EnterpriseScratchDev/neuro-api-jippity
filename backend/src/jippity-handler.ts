@@ -2,7 +2,8 @@ import {
     Action,
     ActionMessage,
     ActionResultMessage,
-    deserializeMessage, ForceActionMessage,
+    deserializeMessage,
+    ForceActionMessage,
     Message,
     validateActionSchema
 } from "./api-types";
@@ -87,7 +88,7 @@ export class JippityHandler {
                     );
                     log.info(`Jippity says: ${content}`);
                     // this.openaiRequestInProgress = false;
-                    this.state = { id: "state/idle" }
+                    this.state = { id: "state/idle" };
                     return;
                 } else if (choice.finish_reason === "tool_calls") {
                     let toolCalls = choice.message.tool_calls;
@@ -169,7 +170,9 @@ export class JippityHandler {
                 this.handleMessage(message);
                 break;
             default:
-                log.debug(`Added message with "${message.command}" command to message queue (current state is ${this.state.id})`)
+                log.debug(
+                    `Added message with "${message.command}" command to message queue (current state is ${this.state.id})`
+                );
                 this.messageQueue.offer(message);
                 break;
         }
