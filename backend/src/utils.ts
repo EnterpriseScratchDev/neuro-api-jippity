@@ -61,5 +61,5 @@ export function convertForcedActionMessageToOpenAIMessage(
     return {
         role: "user",
         content: content
-    }
+    };
 }

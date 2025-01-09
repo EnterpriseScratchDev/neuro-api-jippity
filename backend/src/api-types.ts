@@ -370,26 +370,26 @@ const ActionMessageSchema: JSONSchemaType<ActionMessage> = {
 };
 
 type MessageTypeMapping = {
-    "startup": StartupMessage;
-    "context": ContextMessage;
+    startup: StartupMessage;
+    context: ContextMessage;
     "actions/register": RegisterActionsMessage;
     "actions/unregister": UnregisterActionsMessage;
     "actions/force": ForceActionMessage;
     "action/result": ActionResultMessage;
-    "action": ActionMessage;
+    action: ActionMessage;
 };
 
 type MessageType = keyof MessageTypeMapping;
 
 /** Validators */
 export const Validators: Record<MessageType, ValidateFunction<BaseMessage>> = {
-    "startup": ajv.compile(StartupMessageSchema),
-    "context": ajv.compile(ContextMessageSchema),
+    startup: ajv.compile(StartupMessageSchema),
+    context: ajv.compile(ContextMessageSchema),
     "actions/register": ajv.compile(RegisterActionsMessageSchema),
     "actions/unregister": ajv.compile(UnregisterActionsMessageSchema),
     "actions/force": ajv.compile(ForceActionMessageSchema),
     "action/result": ajv.compile(ActionResultMessageSchema),
-    "action": ajv.compile(ActionMessageSchema)
+    action: ajv.compile(ActionMessageSchema)
 };
 
 function validateAndCast<T extends keyof MessageTypeMapping>(
@@ -401,7 +401,11 @@ function validateAndCast<T extends keyof MessageTypeMapping>(
         return ok(obj as MessageTypeMapping[T]);
     }
     // logValidationErrors(validator);
-    return err(new MessageDeserializationError(`Validation of command "${command}" failed: ${ajv.errorsText(validator.errors)}`));
+    return err(
+        new MessageDeserializationError(
+            `Validation of command "${command}" failed: ${ajv.errorsText(validator.errors)}`
+        )
+    );
 }
 
 /**
@@ -414,11 +418,13 @@ export function deserializeMessage(json: string): Result<Message, MessageDeseria
     try {
         obj = JSON.parse(json);
     } catch (e) {
-        return err(new MessageDeserializationError("Message is not valid JSON", errorOrUndefined(e)));
+        return err(
+            new MessageDeserializationError("Message is not valid JSON", errorOrUndefined(e))
+        );
     }
 
     if (!obj.command) {
-        return err(new MessageDeserializationError("Message is missing the \"command\" property"));
+        return err(new MessageDeserializationError('Message is missing the "command" property'));
     }
 
     if (!(obj.command in Validators)) {
@@ -438,7 +444,12 @@ export function validateActionSchema(action: Action): Result<null, MessageDeseri
     }
     if (!ajv.validateSchema(action.schema) as boolean) {
         const errorMessage = ajv.errorsText() ?? "Unknown error";
-        return err(new MessageDeserializationError("Invalid Action schema", new MessageDeserializationError(errorMessage)));
+        return err(
+            new MessageDeserializationError(
+                "Invalid Action schema",
+                new MessageDeserializationError(errorMessage)
+            )
+        );
     }
     return ok(null);
 }

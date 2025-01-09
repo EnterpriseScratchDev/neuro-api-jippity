@@ -29,7 +29,7 @@ Jippity sends messages to all connected websockets, so a tool like [Insomnia](ht
 
 ## Configuration Using Environment Variables
 This tool is configured exclusively with environment variables.
-Environment variables will be loaded from the `.env` file in the root of this repository, if present.
+Environment variables will be loaded from the `.env` file in the backend folder, if present.
 A config file may be added in the future.
 
 | Environment Variable  | Description                                                                                                                                     | Required | Example       |

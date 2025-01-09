@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+import "dotenv/config";
+
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import util from "util";
 import assert from "node:assert";
@@ -7,8 +10,6 @@ import { log } from "./logging";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { JippityHandler } from "./jippity-handler";
 
-// Load environment variables from .env file
-import "dotenv/config";
 import { sleep } from "./utils";
 
 // ***************************
@@ -110,7 +111,7 @@ wss.on("connection", (ws) => {
  */
 export function send(message: Message) {
     assert(wsConnections, "send called with wsConnections uninitialized");
-    assert(message.command, "Messages must always have a \"command\" property");
+    assert(message.command, 'Messages must always have a "command" property');
 
     if (wsConnections.length == 0) {
         log.warn("send function called with no active WebSocket connections");
