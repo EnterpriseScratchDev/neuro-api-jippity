@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+import "dotenv/config";
+
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import util from "util";
 import assert from "node:assert";
@@ -7,8 +10,6 @@ import { log } from "./logging";
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { JippityHandler } from "./jippity-handler";
 
-// Load environment variables from .env file
-import "dotenv/config";
 import { sleep } from "./utils";
 
 // ***************************
