@@ -7,7 +7,7 @@ import {
     Message,
     validateActionSchema
 } from "./api-types";
-import { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { openai, openaiModel, send, SYSTEM_MESSAGE } from "./index";
 import { log } from "./logging";
 import assert from "node:assert";
@@ -56,12 +56,17 @@ export class JippityHandler {
         log.debug(
             `callOpenAI() >> oldState: ${JSON.stringify(oldState)}, newState: ${JSON.stringify(this.state)}`
         );
-
-        // this.openaiRequestInProgress = true;
-
-        let tools: ChatCompletionTool[] | undefined = this.actions.map(convertActionToTool);
-        if (tools.length === 0) {
-            tools = undefined;
+        const body: ChatCompletionCreateParamsNonStreaming = {
+            model: openaiModel,
+            messages: [...this.openaiMessages],
+            response_format: {
+                type: "text"
+            },
+            temperature: 1,
+            max_completion_tokens: 2048,
+            top_p: 1,
+            frequency_penalty: 0,
+            presence_penalty: 0
         }
         return openai.chat.completions
             .create({
