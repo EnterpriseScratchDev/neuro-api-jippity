@@ -7,7 +7,7 @@ import {
     Message,
     validateActionSchema
 } from "./api-types";
-import { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { openai, openaiModel, send, SYSTEM_MESSAGE } from "./index";
 import { log } from "./logging";
 import assert from "node:assert";
@@ -15,6 +15,7 @@ import assert from "node:assert";
 import { convertActionToTool, convertForcedActionMessageToOpenAIMessage } from "./utils";
 import { Queue } from "./queue";
 import { State } from "./jippity-types";
+import { ChatCompletionCreateParamsNonStreaming } from "openai/src/resources/chat/completions";
 
 // ******************************
 // * AI and Game State Tracking *
@@ -56,27 +57,28 @@ export class JippityHandler {
         log.debug(
             `callOpenAI() >> oldState: ${JSON.stringify(oldState)}, newState: ${JSON.stringify(this.state)}`
         );
-
-        // this.openaiRequestInProgress = true;
-
-        let tools: ChatCompletionTool[] | undefined = this.actions.map(convertActionToTool);
-        if (tools.length === 0) {
-            tools = undefined;
+        const body: ChatCompletionCreateParamsNonStreaming = {
+            model: openaiModel,
+            messages: [...this.openaiMessages],
+            response_format: {
+                type: "text"
+            },
+            temperature: 1,
+            max_completion_tokens: 2048,
+            top_p: 1,
+            frequency_penalty: 0,
+            presence_penalty: 0
+        }
+        // Convert actions to tools if there are any
+        if (this.actions.length > 0) {
+            body.tools = this.actions.map(convertActionToTool);
+        }
+        // Prevent the usage of multiple tools
+        if (body.tools) {
+            body.parallel_tool_calls = false;
         }
         return openai.chat.completions
-            .create({
-                model: openaiModel,
-                messages: [...this.openaiMessages],
-                response_format: {
-                    type: "text"
-                },
-                tools: tools,
-                temperature: 1,
-                max_completion_tokens: 2048,
-                top_p: 1,
-                frequency_penalty: 0,
-                presence_penalty: 0
-            })
+            .create(body)
             .then((response) => {
                 assert(response.choices.length == 1);
                 const choice = response.choices[0];
