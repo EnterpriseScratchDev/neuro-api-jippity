@@ -325,4 +325,32 @@ export class JippityHandler {
         this.pendingActionId = null;
         this.callOpenAI();
     }
+
+    pruneContext(maxMessages: number = 10) {
+        if (this.openaiMessages.filter(value => value.role !== "system").length === 0) {
+            // The only message is the system message, so don't do anything
+            return;
+        }
+        if (this.openaiMessages.length <= maxMessages) {
+            // There are fewer messages than the maximum, so don't do anything
+            return;
+        }
+        let remainingSpaceForMessages = maxMessages - 1;
+        const prunedMessages: ChatCompletionMessageParam[] = [];
+        let i = this.openaiMessages.length - 1;
+        while (remainingSpaceForMessages > 0 && i >= 0) {
+            const message = this.openaiMessages[i];
+            // Make sure that we don't split up a tool call from its result
+            if (message.role === "tool" && remainingSpaceForMessages === 1) {
+                break;
+            }
+            prunedMessages.push(message);
+            remainingSpaceForMessages--;
+            i--;
+        }
+        prunedMessages.push(SYSTEM_MESSAGE);
+        prunedMessages.reverse();
+        log.info(`Pruned context messages from ${this.openaiMessages.length} to ${prunedMessages.length} messages`);
+        this.openaiMessages = prunedMessages;
+    }
 }

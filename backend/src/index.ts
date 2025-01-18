@@ -140,6 +140,7 @@ async function main() {
     const idleTime = 5_000;
 
     while (jippityHandler.state.id !== "state/exiting") {
+        jippityHandler.pruneContext();
         switch (jippityHandler.state.id) {
             case "state/thinking":
                 log.debug(`Jippity is thinking... (sleeping for ${idleTime / 1000} seconds)`);
