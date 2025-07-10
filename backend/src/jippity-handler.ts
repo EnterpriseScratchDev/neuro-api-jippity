@@ -79,6 +79,18 @@ export class JippityHandler {
         }
         return openai.chat.completions
             .create(body)
+            .withResponse()
+            .then(async (rawResponse) => {
+                const unwrappedResponse = rawResponse.response;
+                if (unwrappedResponse.ok) {
+                    log.debug(`Successful OpenAI API response received for request_id=${rawResponse.request_id}`);
+                } else {
+                    const body = await unwrappedResponse.text();
+                    log.error(`OpenAI API request ${rawResponse.request_id} failed with status ${unwrappedResponse.status} and body ${body}`,);
+                    throw new Error(`OpenAI API request  ${rawResponse.request_id} failed`);
+                }
+                return rawResponse.data;
+            })
             .then((response) => {
                 assert(response.choices.length == 1);
                 const choice = response.choices[0];
