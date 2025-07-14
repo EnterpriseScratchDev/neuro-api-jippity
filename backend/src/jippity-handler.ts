@@ -16,6 +16,7 @@ import { convertActionToTool, convertForcedActionMessageToOpenAIMessage } from "
 import { Queue } from "./queue";
 import { State } from "./jippity-types";
 import { ChatCompletionCreateParamsNonStreaming } from "openai/src/resources/chat/completions";
+import OpenAI from "openai";
 
 // ******************************
 // * AI and Game State Tracking *
@@ -80,6 +81,7 @@ export class JippityHandler {
         return openai.chat.completions
             .create(body)
             .then((response) => {
+                log.debug(`Successful response from OpenAI API for request ID ${response._request_id}`);
                 assert(response.choices.length == 1);
                 const choice = response.choices[0];
                 if (choice.finish_reason === "stop") {
@@ -139,9 +141,12 @@ export class JippityHandler {
                 }
             })
             .catch((error) => {
-                log.error("Error calling OpenAI API", error);
+                if (error instanceof OpenAI.APIError && error.request_id) {
+                    log.error(`Error calling OpenAI API with request ID ${error.request_id} ->`, error);
+                } else {
+                    log.error("Error calling OpenAI API ->", error);
+                }
                 this.state = { id: "state/exiting", reason: "Error calling OpenAI API" };
-                // this.openaiRequestInProgress = false;
             });
     }
 
