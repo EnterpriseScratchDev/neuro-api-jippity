@@ -13,9 +13,8 @@ Jippity has the following advantages over Randy:
 If you have any problems with Jippity, please create a GitHub issue or message me on Discord: @EnterpriseScratchDev
 
 > [!WARNING]
-> I have very little experience with JavaScript and TypeScript and have likely gone about things the wrong way.
-> One look at `index.ts` will be enough to see that I'm a little out of my element.
-> Despite that, I'm committed to fixing bugs and otherwise supporting Jippity until at least the end of this year if there is demand for it.
+> I'm not actively working on this project, but I'll try to address any issues that come up if you create a GitHub issue and/or message me on Discord.
+> This project has some jankiness built into it at a foundational level, so please don't expect perfection.
 
 ## Installing and Running Jippity
 1. Clone or download this repository
