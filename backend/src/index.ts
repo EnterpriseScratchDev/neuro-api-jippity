@@ -15,9 +15,9 @@ import { sleep } from "./utils";
 // ***************************
 // * OpenAI API Client Setup *
 // ***************************
-export const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-});
+// Configured using the following environment variables:
+// OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_ORG_ID, and OPENAI_PROJECT_ID
+export const openai = new OpenAI();
 export const openaiModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 // The initial "system" message seen by the AI
