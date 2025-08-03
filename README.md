@@ -31,16 +31,16 @@ This tool is configured exclusively with environment variables.
 Environment variables will be loaded from the `.env` file in the backend folder, if present.
 A config file may be added in the future.
 
-| Environment Variable  | Description                                                                                                                                                 | Required | Example                         |
-|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------------|
-| `OPENAI_API_KEY`      | Your OpenAI API key. You'll still use this property even if you use a different provider.                                                                   | Yes      | you wish                        |
-| `OPENAI_BASE_URL`     | The base URL of the OpenAI API. Defaults to `https://api.openai.com/v1`. Setting a different base URL allows you to use other providers, such as Anthropic. | No       | `https://api.anthropic.com/v1/` |
-| `OPENAI_MODEL`        | The OpenAI model to use. Must support tools (formerly functions).                                                                                           | No       | `gpt-4o-mini`                   |
-| `OPENAI_ORG_ID`       | Your OpenAI organization ID. Defaults to `null`.                                                                                                            | No       |                                 |
-| `OPENAI_PROJECT_ID`   | Your OpenAI project ID. Defaults to `null`.                                                                                                                 | No       |                                 |
-| `WSS_PORT`            | The port the websocket server will listen on. Defaults to `8000`.                                                                                           | No       | `8000`                          |
-| `LOG_LEVEL`           | The level of logs to display. The options are `error`, `warn`, `info`, and `debug`. Defaults to `info`.                                                     | No       | `info`                          |
-| `JIPPITY_INTERVAL_MS` | The interval in milliseconds before Jippity will say/do something unprompted. Defaults to 10 seconds, has a hard-coded minimum of 1 second.                 | No       | `10000`                         |
+| Environment Variable  | Description                                                                                                                                                 | Required | Example                                               |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-------------------------------------------------------|
+| `OPENAI_API_KEY`      | Your OpenAI API key. You'll still use this property even if you use a different provider.                                                                   | Yes      | `sk-anVzdCB1c2UgeW91ciBtb20ncyBjcmVkaXQgY2FyZCBsbWFv` |
+| `OPENAI_BASE_URL`     | The base URL of the OpenAI API. Defaults to `https://api.openai.com/v1`. Setting a different base URL allows you to use other providers, such as Anthropic. | No       | `https://api.anthropic.com/v1/`                       |
+| `OPENAI_MODEL`        | The OpenAI model to use. Must support tools (formerly functions).                                                                                           | No       | `gpt-4o-mini`                                         |
+| `OPENAI_ORG_ID`       | Your OpenAI organization ID. Defaults to `null`.                                                                                                            | No       |                                                       |
+| `OPENAI_PROJECT_ID`   | Your OpenAI project ID. Defaults to `null`.                                                                                                                 | No       |                                                       |
+| `WSS_PORT`            | The port the websocket server will listen on. Defaults to `8000`.                                                                                           | No       | `8000`                                                |
+| `LOG_LEVEL`           | The level of logs to display. The options are `error`, `warn`, `info`, and `debug`. Defaults to `info`.                                                     | No       | `info`                                                |
+| `JIPPITY_INTERVAL_MS` | The interval in milliseconds before Jippity will say/do something unprompted. Defaults to 10 seconds, has a hard-coded minimum of 1 second.                 | No       | `10000`                                               |
 
 ## Known Issues
 - Old messages are not cleared from the AI's "memory", so the context window will eventually fill up, leading to a crash.
