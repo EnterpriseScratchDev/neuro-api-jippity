@@ -69,7 +69,7 @@ export class JippityHandler {
             top_p: 1,
             frequency_penalty: 0,
             presence_penalty: 0
-        }
+        };
         // Convert actions to tools if there are any
         if (this.actions.length > 0) {
             body.tools = this.actions.map(convertActionToTool);
@@ -81,7 +81,9 @@ export class JippityHandler {
         return openai.chat.completions
             .create(body)
             .then((response) => {
-                log.debug(`Successful response from OpenAI API for request ID ${response._request_id}`);
+                log.debug(
+                    `Successful response from OpenAI API for request ID ${response._request_id}`
+                );
                 assert(response.choices.length == 1);
                 const choice = response.choices[0];
                 if (choice.finish_reason === "stop") {
@@ -165,12 +167,13 @@ export class JippityHandler {
     // }
 
     public receiveMessage(dataStr: string): void {
-        const messageResult = deserializeMessage(dataStr);
-        if (messageResult.isErr()) {
-            log.error(`Failed to deserialize message: ${messageResult.error}`);
+        let message: Message;
+        try {
+            message = deserializeMessage(dataStr);
+        } catch (e) {
+            log.error(`Failed to deserialize message: ${e}`);
             return;
         }
-        const message = messageResult.value;
 
         switch (this.state.id) {
             case "state/waiting-for-game-startup":
@@ -261,12 +264,13 @@ export class JippityHandler {
                 );
                 continue;
             }
-            const actionSchemaValidationResult = validateActionSchema(action);
-            if (actionSchemaValidationResult.isErr()) {
+            try {
+                validateActionSchema(action);
+                log.debug(`Successfully validated schema for action "${action.name}"`);
+            } catch (e) {
                 log.error(
-                    `Attempted to register action "${action.name}" with an invalid schema: ${actionSchemaValidationResult.error}`
+                    `Attempted to register action "${action.name}" with an invalid schema: ${e}`
                 );
-                continue;
             }
             this.actions.push(action);
             successfulRegistrations++;
