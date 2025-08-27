@@ -141,8 +141,11 @@ export class JippityHandler {
                 }
             })
             .catch((error) => {
-                if (error instanceof OpenAI.APIError && error.request_id) {
-                    log.error(`Error calling OpenAI API with request ID ${error.request_id} ->`, error);
+                if (error instanceof OpenAI.APIError && error.requestID) {
+                    log.error(
+                        `Error calling OpenAI API with request ID ${error.requestID} ->`,
+                        error
+                    );
                 } else {
                     log.error("Error calling OpenAI API ->", error);
                 }
