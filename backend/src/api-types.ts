@@ -109,6 +109,14 @@ export function isContextMessage(msg: Message): msg is ContextMessage {
     return msg.command === "context";
 }
 
+export function isNonSilentContextMessage(msg: Message): msg is ContextMessage {
+    return isContextMessage(msg) && !msg.data.silent;
+}
+
+export function isSilentContextMessage(msg: Message): msg is ContextMessage {
+    return isContextMessage(msg) && msg.data.silent;
+}
+
 /** Schema for {@link ContextMessage} */
 const ContextMessageSchema: JSONSchemaType<ContextMessage> = {
     type: "object",
