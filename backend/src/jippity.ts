@@ -27,6 +27,7 @@ import {
     ChatCompletionMessageParam,
     ChatCompletionToolMessageParam
 } from "openai/resources/chat/completions";
+import util from "util";
 
 export class Jippity {
     private isMainLoopRunning = false;
@@ -114,7 +115,9 @@ export class Jippity {
 
                     if (actionMessage) {
                         // Transition to pending-action state
-                        log.info(`Sending action to game: ${JSON.stringify(actionMessage)}`);
+                        log.info(
+                            `Sending action to game: ${util.inspect(actionMessage, { breakLength: Infinity })}`
+                        );
                         send(actionMessage); // TODO: handle send errors
                         this.state = toPendingActionState(
                             this.state,
@@ -225,7 +228,9 @@ export class Jippity {
                 );
                 return;
             }
-            log.info(`Received action result for action id ${message.data.id}.`);
+            log.info(
+                `Received action result from game: ${util.inspect(message.data, { breakLength: Infinity })}`
+            );
             // Resolve the pending action result promise
             if (!this.actionResultResolver) {
                 log.error(
@@ -406,9 +411,11 @@ export class Jippity {
                 body.tool_choice = "auto";
             }
         }
-        log.debug(`Sending request to OpenAI: ${JSON.stringify(body)}`);
+        log.debug(`Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}}`);
         const response = await openai.chat.completions.create(body);
-        log.debug(`Received response from OpenAI: ${JSON.stringify(response)}`);
+        log.debug(
+            `Received response from OpenAI: ${util.inspect(response, { breakLength: Infinity })}`
+        );
         if (response.choices.length === 0) {
             throw new Error("OpenAI returned no choices");
         }
