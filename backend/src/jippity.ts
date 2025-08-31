@@ -267,7 +267,7 @@ export class Jippity {
             // Otherwise, add to reactionQueue
             this.reactionQueue.push(message);
 
-            while (this.reactionQueue.length > 2) {
+            while (this.reactionQueue.length > 1) {
                 const dropped = this.reactionQueue.shift();
                 if (!dropped) {
                     break;
