@@ -1,24 +1,31 @@
-import { ActionMessage, ForceActionMessage } from "./api-types";
+// Utility functions for state transitions
+import {
+    ActionMessage,
+    ActionResultMessage,
+    ContextMessage,
+    ForceActionMessage
+} from "./api-types";
+import { ChatCompletionMessage } from "openai/resources/chat/completions";
 
 export type State =
     | WaitingForGameState
     | IdleState
     | ThinkingState
     | PendingActionState
-    | PendingForcedActionState
-    | TalkingState
     | ExitingState;
 
 interface BaseState {
     id: string;
-    description?: string;
+    since: Date;
+    game: string;
 }
 
 /**
  * Jippity is waiting for the game to start up.
  */
-export interface WaitingForGameState {
+export interface WaitingForGameState extends BaseState {
     id: "state/waiting-for-game-startup";
+    game: never;
 }
 
 /**
@@ -33,6 +40,9 @@ export interface IdleState extends BaseState {
  */
 export interface ThinkingState extends BaseState {
     id: "state/thinking";
+    trigger?: ContextMessage | ForceActionMessage | ActionResultMessage;
+    // Even if the trigger is an ActionResultMessage, we need to know if it was a forced action.
+    forceAction?: ForceActionMessage;
 }
 
 /**
@@ -41,23 +51,8 @@ export interface ThinkingState extends BaseState {
 export interface PendingActionState extends BaseState {
     id: "state/pending-action";
     action: ActionMessage;
-}
-
-/**
- * Jippity is waiting for the result of an action that was forced by the game.
- */
-export interface PendingForcedActionState extends BaseState {
-    id: "state/pending-forced-action";
-    /**
-     * The action message Jippity sent to the game
-     */
-    action: ActionMessage;
-    /**
-     * The message from the game that forced Jippity to take action.
-     *
-     * This is tracked because Jippity will need to retry the action if it fails.
-     */
-    forcedAction: ForceActionMessage;
+    completion: ChatCompletionMessage;
+    forceAction?: ForceActionMessage;
 }
 
 /**
@@ -75,4 +70,55 @@ export interface TalkingState extends BaseState {
 export interface ExitingState extends BaseState {
     id: "state/exiting";
     reason?: string;
+}
+
+// Utility functions for state transitions
+
+export function toWaitingForGameState(): WaitingForGameState {
+    return {
+        id: "state/waiting-for-game-startup",
+        since: new Date(),
+        game: undefined as never
+    };
+}
+
+export function toIdleState(prev: { game: string }): IdleState {
+    return {
+        id: "state/idle",
+        since: new Date(),
+        game: prev.game
+    };
+}
+
+export function toThinkingState(
+    prev: { game: string },
+    trigger?: ContextMessage | ForceActionMessage | ActionResultMessage,
+    forceAction?: ForceActionMessage
+): ThinkingState {
+    if (trigger && trigger.command === "actions/force" && !forceAction) {
+        forceAction = trigger;
+    }
+    return {
+        id: "state/thinking",
+        since: new Date(),
+        game: prev.game,
+        trigger,
+        forceAction
+    } as ThinkingState;
+}
+
+export function toPendingActionState(
+    prev: { game: string },
+    action: ActionMessage,
+    completion: ChatCompletionMessage,
+    forceAction?: ForceActionMessage
+): PendingActionState {
+    return {
+        id: "state/pending-action",
+        since: new Date(),
+        game: prev.game,
+        action,
+        completion,
+        forceAction
+    };
 }
