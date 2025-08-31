@@ -11,7 +11,8 @@ import {
     ActionMessage,
     ActionResultMessage,
     ContextMessage,
-    ForceActionMessage,
+    isContextMessage,
+    isForceActionMessage,
     Message,
     validateActionSchema
 } from "./api-types";
@@ -78,11 +79,11 @@ export class Jippity {
                 case "state/idle": {
                     // Wait for a message that requires a reaction
                     const msg = await this.receiveNextReactionMessage();
-                    if (this.isForceActionMessage(msg)) {
+                    if (isForceActionMessage(msg)) {
                         // Transition to thinking state with force action
                         this.state = toThinkingState(this.state, msg);
                         // } else if (this.isContextMessage(msg) && !msg.data.silent) {
-                    } else if (this.isContextMessage(msg)) {
+                    } else if (isContextMessage(msg)) {
                         // Transition to thinking state with context message
                         this.state = toThinkingState(this.state, msg);
                     }
@@ -251,7 +252,7 @@ export class Jippity {
 
         if (message.command === "context") {
             // If a ForceActionMessage is present in the reactionQueue, buffer this context message instead of queueing for reaction
-            const hasForceAction = this.reactionQueue.some(this.isForceActionMessage);
+            const hasForceAction = this.reactionQueue.some(isForceActionMessage);
             if (hasForceAction) {
                 this.contextBuffer.push(message);
                 return;
@@ -278,11 +279,11 @@ export class Jippity {
             return;
         }
 
-        if (this.isForceActionMessage(message)) {
+        if (isForceActionMessage(message)) {
             // Remove all ContextMessages from reactionQueue and buffer them
             const remaining: Message[] = [];
             for (const msg of this.reactionQueue) {
-                if (this.isContextMessage(msg)) {
+                if (isContextMessage(msg)) {
                     this.contextBuffer.push(msg);
                 } else {
                     remaining.push(msg);
@@ -351,14 +352,6 @@ export class Jippity {
                 throw new Error("it shouldn't be possible for resolve to be null here");
             }
         }
-    }
-
-    // --- Message type guards ---
-    private isForceActionMessage(msg: Message): msg is ForceActionMessage {
-        return msg.command === "actions/force";
-    }
-    private isContextMessage(msg: Message): msg is ContextMessage {
-        return msg.command === "context";
     }
 
     private async maybeGenerateAction(

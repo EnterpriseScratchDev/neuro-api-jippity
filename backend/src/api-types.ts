@@ -69,6 +69,10 @@ export interface StartupMessage extends BaseMessage {
     game: string;
 }
 
+export function isStartupMessage(msg: Message): msg is StartupMessage {
+    return msg.command === "startup";
+}
+
 /** Schema for {@link StartupMessage} */
 const StartupMessageSchema: JSONSchemaType<StartupMessage> = {
     type: "object",
@@ -99,6 +103,10 @@ export interface ContextMessage extends BaseMessage {
          */
         silent: boolean;
     };
+}
+
+export function isContextMessage(msg: Message): msg is ContextMessage {
+    return msg.command === "context";
 }
 
 /** Schema for {@link ContextMessage} */
@@ -134,6 +142,10 @@ export interface RegisterActionsMessage extends BaseMessage {
          */
         actions: Action[];
     };
+}
+
+export function isRegisterActionsMessage(msg: Message): msg is RegisterActionsMessage {
+    return msg.command === "actions/register";
 }
 
 /** Schema for {@link RegisterActionsMessage} */
@@ -184,6 +196,10 @@ export interface UnregisterActionsMessage extends BaseMessage {
          */
         action_names: string[];
     };
+}
+
+export function isUnregisterActionsMessage(msg: Message): msg is UnregisterActionsMessage {
+    return msg.command === "actions/unregister";
 }
 
 /** Schema for {@link UnregisterActionsMessage} */
@@ -238,6 +254,10 @@ export interface ForceActionMessage extends BaseMessage {
         /** The names of the actions that Neuro should choose from. */
         action_names: string[];
     };
+}
+
+export function isForceActionMessage(msg: Message): msg is ForceActionMessage {
+    return msg.command === "actions/force";
 }
 
 /** Schema for {@link ForceActionMessage} */
@@ -299,6 +319,10 @@ export interface ActionResultMessage extends BaseMessage {
     };
 }
 
+export function isActionResultMessage(msg: Message): msg is ActionResultMessage {
+    return msg.command === "action/result";
+}
+
 /** Schema for {@link ActionResultMessage} */
 const ActionResultMessageSchema: JSONSchemaType<ActionResultMessage> = {
     type: "object",
@@ -346,6 +370,10 @@ export interface ActionMessage extends BaseMessage {
          */
         data?: string;
     };
+}
+
+export function isActionMessage(msg: Message): msg is ActionMessage {
+    return msg.command === "action";
 }
 
 /** Schema for {@link ActionMessage} */
