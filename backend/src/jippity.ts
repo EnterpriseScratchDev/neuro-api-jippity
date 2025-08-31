@@ -449,6 +449,10 @@ export class Jippity {
         return { chatCompletionMessage: choice.message };
     }
 
+    /**
+     * Process all messages in {@link contextBuffer} and add them to {@link llmMessages}.
+     * This may make {@link llmMessages} very large, so {@link trimLlmMessages} should typically be called after this.
+     */
     private processContextBuffer(): void {
         log.debug(`processContextBuffer: ${this.contextBuffer.length} message(s) to process`);
         if (this.contextBuffer.length === 0) {
@@ -463,8 +467,13 @@ export class Jippity {
         this.contextBuffer = [];
     }
 
+    /**
+     * Trim the {@link llmMessages} array to keep it within a reasonable size.
+     * This is a naive implementation that just keeps the last 10 messages if there are more than 15.
+     */
     private trimLlmMessages(): void {
         // TODO: Implement better message trimming to fit within token limits
+        // TODO: Make these values configurable
         if (this.llmMessages.length > 15) {
             this.llmMessages = this.llmMessages.slice(-10);
 
@@ -476,6 +485,10 @@ export class Jippity {
         }
     }
 
+    /**
+     * Simulate Jippity speaking by logging the text.
+     * This could be replaced with text-to-speech or other output methods if desired.
+     */
     private speak(text: string): void {
         log.info(`Jippity says: ${text}`);
     }
