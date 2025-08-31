@@ -422,6 +422,8 @@ export const Validators: Record<MessageType, ValidateFunction<BaseMessage>> = {
 /**
  * Validate an object and cast it to the appropriate message type.
  *
+ * If the message is a {@link RegisterActionsMessage}, also validates each action's schema.
+ *
  * @param obj the message object to validate and cast
  * @param command the command property of the message (a key of {@link MessageTypeMapping})
  * @param validator the AJV validator function for the specific message type
@@ -433,19 +435,35 @@ function validateAndCast<T extends keyof MessageTypeMapping>(
     command: T,
     validator: ValidateFunction<BaseMessage>
 ): MessageTypeMapping[T] {
+    let validObj: MessageTypeMapping[T];
     if (validator(obj)) {
-        return obj as MessageTypeMapping[T];
+        validObj = obj as MessageTypeMapping[T];
+    } else {
+        throw new MessageDeserializationError(
+            `Validation of command "${command}" failed: ${ajv.errorsText(validator.errors)}`
+        );
     }
-    // logValidationErrors(validator);
-    throw new MessageDeserializationError(
-        `Validation of command "${command}" failed: ${ajv.errorsText(validator.errors)}`
-    );
+    // If this is a RegisterActionsMessage, validate each action's schema
+    if (isRegisterActionsMessage(validObj)) {
+        for (const action of validObj.data.actions) {
+            try {
+                validateActionSchema(action);
+            } catch (e) {
+                throw new MessageDeserializationError(
+                    `Validation of action schema for action "${action.name}" failed: ${e}`,
+                    errorOrUndefined(e)
+                );
+            }
+        }
+    }
+    return validObj;
 }
 
 /**
  * Deserialize a JSON string to a specific message type.
  *
- * **Does not validate action schemas for {@link RegisterActionsMessage}.**
+ * If the message is a {@link RegisterActionsMessage}, also validates each action's schema.
+ * This was not the case in earlier versions.
  *
  * @param json the JSON string to deserialize
  * @return the deserialized and validated message

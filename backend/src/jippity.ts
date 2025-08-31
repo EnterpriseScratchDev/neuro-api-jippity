@@ -13,8 +13,7 @@ import {
     ContextMessage,
     isContextMessage,
     isForceActionMessage,
-    Message,
-    validateActionSchema
+    Message
 } from "./api-types";
 import { log } from "./logging";
 import assert from "node:assert";
@@ -175,14 +174,6 @@ export class Jippity {
                     `Attempted to register action "${action.name}" when there is already an action with that name`
                 );
                 continue;
-            }
-            try {
-                validateActionSchema(action);
-                log.debug(`Successfully validated schema for action "${action.name}"`);
-            } catch (e) {
-                log.error(
-                    `Attempted to register action "${action.name}" with an invalid schema: ${e}`
-                );
             }
             this.actions.push(action);
             successfulRegistrations++;
