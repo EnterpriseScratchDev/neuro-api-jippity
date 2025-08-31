@@ -1,18 +1,13 @@
-import {
-    State,
-    ThinkingState,
-    toIdleState,
-    toPendingActionState,
-    toThinkingState,
-    toWaitingForGameState
-} from "./jippity-types";
+import { isIdleTimerStimulus, isMessageStimulus, ReactionMessage, Stimulus } from "./jippity-types";
 import {
     Action,
     ActionMessage,
-    ActionResultMessage,
     ContextMessage,
+    ForceActionMessage,
     isContextMessage,
     isForceActionMessage,
+    isNonSilentContextMessage,
+    isSilentContextMessage,
     Message,
     StartupMessage
 } from "./api-types";
@@ -25,7 +20,8 @@ import {
     ChatCompletionMessage,
     ChatCompletionMessageFunctionToolCall,
     ChatCompletionMessageParam,
-    ChatCompletionToolMessageParam
+    ChatCompletionToolMessageParam,
+    ChatCompletionUserMessageParam
 } from "openai/resources/chat/completions";
 import util from "util";
 import { ActionResultManager } from "./action-result-manager";
@@ -33,15 +29,20 @@ import { ActionResultManager } from "./action-result-manager";
 export class Jippity {
     private isMainLoopRunning = false;
 
-    state: State = toWaitingForGameState();
+    // state: State = toWaitingForGameState();
+    state: { id: string } = { id: "state/waiting-for-game-startup" };
+
+    game: string | null = null;
 
     // Registered actions
     actions: Action[] = [];
 
     // --- Message Queues ---
     private contextBuffer: ContextMessage[] = [];
-    private reactionQueue: Message[] = [];
-    private reactionResolver: ((msg: Message) => void) | null = null;
+    private reactionQueue: ReactionMessage[] = [];
+    // private reactionResolver: ((msg: Message) => void) | null = null;
+
+    private stimulusResolver: PromiseWithResolvers<Stimulus> | null = null;
 
     private startUpMessageResolver: PromiseWithResolvers<StartupMessage> | null = null;
 
@@ -63,118 +64,44 @@ export class Jippity {
         assert(!this.isMainLoopRunning, "startMainLoop() should only be called once");
         this.isMainLoopRunning = true;
 
-        // Main FSM loop
+        const startUpMessage = await this.waitForStartupMessage();
+        assert(startUpMessage.command === "startup", "Expected startup message");
+        this.state = { id: "state/idle" };
+        this.game = startUpMessage.game;
+        log.info(`Game started: ${this.game}`);
+
+        // Main loop
         log.debug("Jippity main loop starting...");
         while (true) {
-            switch (this.state.id) {
-                case "state/waiting-for-game-startup": {
-                    // Wait for startup message
-                    const msg = await this.waitForStartupMessage();
-                    assert(msg.command === "startup", "Expected startup message");
-                    // Transition to idle state
-                    log.info(`Received game startup message with game "${msg.game}"`);
-                    this.state = toIdleState({ game: msg.game });
-                    log.debug(
-                        `Game startup detected, transitioning to idle state: ${JSON.stringify(this.state)}`
+            assert(
+                this.state.id !== "state/waiting-for-game-startup",
+                "Should not be in waiting-for-game-startup state in main loop"
+            );
+
+            const stimulus = await this.waitForStimulus();
+            log.debug(`Received stimulus: ${util.inspect(stimulus, { breakLength: Infinity })}`);
+
+            // Update the context window before thinking or acting
+            this.processContextBuffer();
+            this.trimLlmMessages();
+
+            if (isIdleTimerStimulus(stimulus)) {
+                await this.thinkAndMaybeAct();
+            } else if (isMessageStimulus(stimulus)) {
+                const message = stimulus.message;
+                if (isContextMessage(message)) {
+                    assert(
+                        !message.data.silent,
+                        "Silent context messages should not count as stimuli"
                     );
-                    break;
+                    await this.thinkAndMaybeAct(message);
+                } else if (isForceActionMessage(message)) {
+                    await this.handleForceActionMessage(message);
+                } else {
+                    throw new Error(`Unexpected message stimulus type: ${message}`);
                 }
-                case "state/idle": {
-                    // Wait for a message that requires a reaction
-                    const msg = await this.receiveNextReactionMessage();
-                    if (isForceActionMessage(msg)) {
-                        // Transition to thinking state with force action
-                        this.state = toThinkingState(this.state, msg);
-                        // } else if (this.isContextMessage(msg) && !msg.data.silent) {
-                    } else if (isContextMessage(msg)) {
-                        // Transition to thinking state with context message
-                        this.state = toThinkingState(this.state, msg);
-                    }
-                    break;
-                }
-                case "state/thinking": {
-                    this.processContextBuffer();
-
-                    this.trimLlmMessages();
-                    let chatCompletionMessage: ChatCompletionMessage;
-                    let actionMessage: ActionMessage | undefined;
-                    try {
-                        const result = await this.maybeGenerateAction(this.state);
-                        chatCompletionMessage = result.chatCompletionMessage;
-                        actionMessage = result.actionMessage;
-                    } catch (e) {
-                        // Return to idle state on error
-                        const requestId = extractRequestIdFromError(e);
-                        if (requestId) {
-                            log.error(
-                                `An error occurred when calling OpenAI (request ID: ${requestId}):`,
-                                e
-                            );
-                        } else {
-                            log.error("An error occurred when calling OpenAI", e);
-                        }
-                        this.state = toIdleState(this.state);
-                        break;
-                    }
-
-                    const content = chatCompletionMessage.content;
-                    if (content && content.trim().length > 0) {
-                        this.speak(content.trim());
-                    }
-
-                    if (actionMessage) {
-                        // Transition to pending-action state
-                        log.info(
-                            `Sending action to game: ${util.inspect(actionMessage, { breakLength: Infinity })}`
-                        );
-                        send(actionMessage); // TODO: handle send errors
-                        this.state = toPendingActionState(
-                            this.state,
-                            actionMessage,
-                            chatCompletionMessage,
-                            this.state.forceAction
-                        );
-                    } else {
-                        // No action generated, add the message to the context window and return to idle state
-                        this.llmMessages.push(chatCompletionMessage);
-                        this.state = toIdleState(this.state);
-                    }
-
-                    break;
-                }
-                case "state/pending-action": {
-                    // Wait for action result message
-                    // TODO: Catch exceptions thrown here
-                    const msg: ActionResultMessage = await this.actionResultManager.getActionResult(
-                        this.state.action.data.id
-                    );
-                    assert(msg.data.id === this.state.action.data.id, "Action result ID mismatch");
-                    const actionResultContent = msg.data.message
-                        ? { success: msg.data.success, message: msg.data.message }
-                        : { success: msg.data.success };
-                    const actionResultMessage: ChatCompletionToolMessageParam = {
-                        role: "tool",
-                        tool_call_id: msg.data.id,
-                        content: JSON.stringify(actionResultContent)
-                    };
-                    // Add the completion and action result to llmMessages
-                    this.llmMessages.push(this.state.completion);
-                    this.llmMessages.push(actionResultMessage);
-
-                    // Transition back to thinking state
-                    // If the action was forced and failed, keep the forceAction in the new state
-                    const newState = toThinkingState(this.state, msg);
-                    if (this.state.forceAction && !msg.data.success) {
-                        newState.forceAction = this.state.forceAction;
-                    }
-                    this.state = newState;
-                    break;
-                }
-                default: {
-                    // Unknown state, log and exit
-                    log.error(`Invalid state: ${this.state}`);
-                    return;
-                }
+            } else {
+                throw new Error(`Unexpected stimulus type: ${stimulus}`);
             }
         }
     }
@@ -219,22 +146,11 @@ export class Jippity {
                 this.startUpMessageResolver = Promise.withResolvers<StartupMessage>();
             }
             this.startUpMessageResolver.resolve(message);
+            return;
         }
 
         // Handle action result messages immediately.
         if (message.command === "action/result") {
-            if (this.state.id !== "state/pending-action") {
-                log.error(
-                    `Received action/result message while current state is ${this.state.id}. Ignoring.`
-                );
-                return;
-            }
-            if (message.data.id !== this.state.action.data.id) {
-                log.error(
-                    `Received action/result message with id ${message.data.id} while waiting for result of action with id ${this.state.action.data.id}. Ignoring.`
-                );
-                return;
-            }
             log.info(
                 `Received action result from game: ${util.inspect(message.data, { breakLength: Infinity })}`
             );
@@ -262,21 +178,36 @@ export class Jippity {
             return;
         }
 
-        if (message.command === "context") {
+        if (isSilentContextMessage(message)) {
+            // Silent context messages are only buffered for context, and do not trigger reactions
+            this.contextBuffer.push(message);
+            return;
+        }
+
+        if (isNonSilentContextMessage(message)) {
             // If a ForceActionMessage is present in the reactionQueue, buffer this context message instead of queueing for reaction
             const hasForceAction = this.reactionQueue.some(isForceActionMessage);
             if (hasForceAction) {
                 this.contextBuffer.push(message);
                 return;
             }
+
+            // If there is a pending stimulusResolver, resolve with this context message it immediately
+            if (this.reactionQueue.length === 0 && this.stimulusResolver) {
+                log.debug(`Resolving stimulusResolver with context message`);
+                const resolver = this.stimulusResolver;
+                this.stimulusResolver = null;
+                resolver.resolve({ type: "Message", message });
+                return;
+            }
+
             // Otherwise, add to reactionQueue
             this.reactionQueue.push(message);
 
             while (this.reactionQueue.length > 1) {
                 const dropped = this.reactionQueue.shift();
-                if (!dropped) {
-                    break;
-                }
+                assert(dropped, "unreachable");
+                // We checked before that there are no ForceActionMessages in the queue, so this must be a ContextMessage
                 assert(
                     dropped?.command === "context",
                     "Only context messages should be dropped from reactionQueue"
@@ -287,13 +218,21 @@ export class Jippity {
                 );
             }
 
-            this.resolveReactionQueue();
             return;
         }
 
         if (isForceActionMessage(message)) {
-            // Remove all ContextMessages from reactionQueue and buffer them
-            const remaining: Message[] = [];
+            // If there is a pending stimulusResolver, resolve it with this ForceActionMessage immediately
+            if (this.reactionQueue.length === 0 && this.stimulusResolver) {
+                log.debug(`Resolving stimulusResolver with force action message`);
+                const resolver = this.stimulusResolver;
+                this.stimulusResolver = null;
+                resolver.resolve({ type: "Message", message });
+                return;
+            }
+
+            // Remove all ContextMessages from reactionQueue and put them in contextBuffer
+            const remaining: ForceActionMessage[] = [];
             for (const msg of this.reactionQueue) {
                 if (isContextMessage(msg)) {
                     this.contextBuffer.push(msg);
@@ -304,63 +243,222 @@ export class Jippity {
             this.reactionQueue = remaining;
             // Add the new ForceActionMessage
             this.reactionQueue.push(message);
-            this.resolveReactionQueue();
             return;
         }
     }
 
-    /**
-     * Returns the next message that requires a reaction.
-     * If no such message is available, returns a Promise that resolves when one arrives.
-     * If there are multiple messages in the queue, always process the oldest first.
-     */
-    async receiveNextReactionMessage(): Promise<Message> {
+    private async waitForStimulus(): Promise<Stimulus> {
+        // Implementation that waits for either an idle timer or a message
         if (this.reactionQueue.length > 0) {
             log.debug(
-                `receiveNextReactionMessage: there are already ${this.reactionQueue.length} messages in reactionQueue`
+                `waitForStimulus: there are already ${this.reactionQueue.length} messages in reactionQueue`
             );
-            return this.reactionQueue.shift()!;
+            const message = this.reactionQueue.shift()!;
+            log.debug(
+                `waitForStimulus: returning message stimulus from reactionQueue: ${message.command}`
+            );
+            return { type: "Message", message };
         }
-        // Wait for a new reaction-required message
-        return new Promise<Message>((resolve) => {
-            if (this.reactionResolver) {
-                throw new Error("Multiple reactionResolvers detected!");
+        if (this.stimulusResolver) {
+            log.error(
+                "waitForStimulus: stimulusResolver already exists; please tell the maintainer about this"
+            );
+            throw new Error("stimulusResolver already exists");
+        }
+        this.stimulusResolver = Promise.withResolvers<Stimulus>();
+
+        let resolved = false;
+        const originalResolve = this.stimulusResolver.resolve;
+        const originalReject = this.stimulusResolver.reject;
+
+        // Wrap resolve/reject to ensure only one call
+        this.stimulusResolver.resolve = (value) => {
+            if (!resolved) {
+                resolved = true;
+                this.stimulusResolver = null;
+                originalResolve(value);
             }
-            this.reactionResolver = resolve;
-        });
+        };
+        this.stimulusResolver.reject = (reason) => {
+            if (!resolved) {
+                resolved = true;
+                this.stimulusResolver = null;
+                originalReject(reason);
+            }
+        };
+
+        setTimeout(() => {
+            if (!resolved && this.stimulusResolver) {
+                log.debug("waitForStimulus: timeout reached, resolving with IdleTimer");
+                this.stimulusResolver.resolve({ type: "IdleTimer" });
+            }
+        }, 1000);
+
+        return this.stimulusResolver.promise;
     }
 
-    /**
-     * Helper to resolve any pending reaction message promise.
-     */
-    private resolveReactionQueue() {
-        if (!this.reactionResolver) {
-            log.debug("resolveReactionQueue: no pending reactionResolver to resolve");
-            return;
-        }
-        // TODO: is this right?
-        while (this.reactionResolver && this.reactionQueue.length > 0) {
-            const msg = this.reactionQueue.shift()!;
-            const resolve = this.reactionResolver;
-            this.reactionResolver = null;
-            if (resolve) {
-                resolve(msg);
-            } else {
-                throw new Error("it shouldn't be possible for resolve to be null here");
-            }
-        }
-    }
-
-    private async maybeGenerateAction(
-        state: ThinkingState
-    ): Promise<{ chatCompletionMessage: ChatCompletionMessage; actionMessage?: ActionMessage }> {
-        const messages: ChatCompletionMessageParam[] = [this.systemMessage, ...this.llmMessages];
-        if (state.trigger?.command === "context") {
+    private async thinkAndMaybeAct(message?: ContextMessage) {
+        const messages: ChatCompletionMessageParam[] = [];
+        if (message) {
             messages.push({
                 role: "user",
-                content: `Context from ${state.trigger.game}:\n${state.trigger.data.message}`
+                content: `Context from ${message.game}:\n${message.data.message}`
             });
         }
+
+        let result: {
+            chatCompletionMessage: ChatCompletionMessage;
+            actionMessage?: ActionMessage;
+        };
+        try {
+            result = await this.maybeGenerateAction(messages);
+        } catch (e) {
+            const requestId = extractRequestIdFromError(e);
+            if (requestId) {
+                log.error(
+                    `handleForceActionMessage: An error occurred when trying to generate a tool call (OpenAI request ID: ${requestId}):`,
+                    e
+                );
+            } else {
+                log.error(
+                    "handleForceActionMessage: An error occurred when trying to generate a tool call",
+                    e
+                );
+            }
+            throw e; // TODO: Think of a more elegant way to handle this
+        }
+
+        const { chatCompletionMessage, actionMessage } = result;
+
+        if (chatCompletionMessage.content && chatCompletionMessage.content.trim().length > 0) {
+            this.speak(chatCompletionMessage.content.trim());
+        }
+
+        if (actionMessage) {
+            // Send the action to the game
+            log.info(
+                `Sending action to game: ${util.inspect(actionMessage.data, {
+                    breakLength: Infinity
+                })}`
+            );
+            send(actionMessage);
+
+            const actionResult = await this.actionResultManager.getActionResult(
+                actionMessage.data.id
+            );
+            assert(actionResult.data.id === actionMessage.data.id, "Action result ID mismatch");
+
+            // Add the context message that triggered this to llmMessages
+            this.llmMessages.push(...messages);
+            // Add the chat completion message (i.e., the tool call) to llmMessages
+            this.llmMessages.push(chatCompletionMessage);
+            // Add the action result to llmMessages as a tool message
+            const actionResultContent = actionResult.data.message
+                ? { success: actionResult.data.success, message: actionResult.data.message }
+                : { success: actionResult.data.success };
+            const actionResultMessage: ChatCompletionToolMessageParam = {
+                role: "tool",
+                tool_call_id: actionResult.data.id,
+                content: JSON.stringify(actionResultContent)
+            };
+            this.llmMessages.push(actionResultMessage);
+        } else {
+            // No action was generated, just add the context message and chat completion message to llmMessages
+            this.llmMessages.push(...messages);
+            this.llmMessages.push(chatCompletionMessage);
+        }
+    }
+
+    private async handleForceActionMessage(message: ForceActionMessage): Promise<void> {
+        // Get the list of allowed actions
+        const allowedActionNames = message.data.action_names;
+        const allowedActions = this.actions.filter((a) => allowedActionNames.includes(a.name));
+        if (allowedActions.length === 0) {
+            const availableActionNamesStr = this.actions.map((a) => a.name).join(", ");
+            const actionNamesStr = allowedActionNames.join(", ");
+            throw new Error(
+                `handleForceActionMessage: None of the specified actionNames are registered actions; specified action names: ${actionNamesStr}; registered action names: ${availableActionNamesStr}.`
+            );
+        }
+
+        const queryMessage: ChatCompletionUserMessageParam = {
+            role: "user",
+            content: `${message.data.query}\n\nYou must use one of the following tools: ${allowedActionNames.join(", ")}`
+        };
+
+        let result: {
+            chatCompletionMessage: ChatCompletionMessage;
+            actionMessage: ActionMessage;
+        } | null = null;
+        try {
+            result = await this.forceGenerateAction(allowedActions, [queryMessage]);
+        } catch (e) {
+            const requestId = extractRequestIdFromError(e);
+            if (requestId) {
+                log.error(
+                    `handleForceActionMessage: An error occurred when trying to generate a tool call (OpenAI request ID: ${requestId}):`,
+                    e
+                );
+            } else {
+                log.error(
+                    "handleForceActionMessage: An error occurred when trying to generate a tool call",
+                    e
+                );
+            }
+            throw e; // TODO: Think of a more elegant way to handle this
+        }
+
+        const { chatCompletionMessage, actionMessage } = result;
+
+        // Send the action to the game
+        log.info(
+            `Sending action to game: ${util.inspect(actionMessage.data, {
+                breakLength: Infinity
+            })}`
+        );
+        send(actionMessage);
+
+        const actionResult = await this.actionResultManager.getActionResult(actionMessage.data.id);
+        assert(actionResult.data.id === actionMessage.data.id, "Action result ID mismatch");
+
+        if (!actionResult.data.success) {
+            // TODO: Retry failed actions for force actions
+            log.warn(
+                `handleForceActionMessage: Action ${actionMessage.data.id} failed according to the game. Jippity should immediately retry this action, but this is not yet implemented.`
+            );
+            return;
+        }
+
+        // Add the query message to llmMessages unless ephemeral_context is true
+        if (!message.data.ephemeral_context) {
+            this.llmMessages.push(queryMessage);
+        }
+        // Add the chat completion message (i.e., the tool call) to llmMessages
+        this.llmMessages.push(chatCompletionMessage);
+        // Add the action result to llmMessages as a tool message
+        const actionResultContent = actionResult.data.message
+            ? { success: actionResult.data.success, message: actionResult.data.message }
+            : { success: actionResult.data.success };
+        const actionResultMessage: ChatCompletionToolMessageParam = {
+            role: "tool",
+            tool_call_id: actionResult.data.id,
+            content: JSON.stringify(actionResultContent)
+        };
+        this.llmMessages.push(actionResultMessage);
+    }
+
+    private async forceGenerateAction(
+        allowedActions: Action[],
+        additionalMessages: ChatCompletionMessageParam[] = []
+    ): Promise<{ chatCompletionMessage: ChatCompletionMessage; actionMessage: ActionMessage }> {
+        assert(allowedActions.length > 0, "forceGenerateAction: allowedActions must not be empty");
+
+        // Build messages
+        const messages: ChatCompletionMessageParam[] = [
+            this.systemMessage,
+            ...this.llmMessages,
+            ...additionalMessages
+        ];
         const body: ChatCompletionCreateParamsNonStreaming = {
             model: openaiModel,
             messages: messages,
@@ -368,46 +466,107 @@ export class Jippity {
                 type: "text"
             },
             temperature: 1,
-            max_completion_tokens: 2048,
-            top_p: 1,
+            max_completion_tokens: 4096,
+            frequency_penalty: 0,
+            presence_penalty: 0,
+            tools: allowedActions.map(convertActionToTool),
+            tool_choice: "required",
+            parallel_tool_calls: false
+        };
+        log.debug(
+            `forceGenerateAction: Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}`
+        );
+        const response = await openai.chat.completions.create(body);
+        log.debug(
+            `forceGenerateAction: Received response from OpenAI: ${util.inspect(response, { breakLength: Infinity })}`
+        );
+
+        if (response.choices.length === 0) {
+            throw new Error("OpenAI response included no choices");
+        } else if (response.choices.length > 1) {
+            log.warn("OpenAI response included multiple choices; only the first will be used");
+        }
+
+        const choice = response.choices[0];
+
+        // Make sure there are actually tool calls in the response
+        if (choice.finish_reason !== "tool_calls") {
+            throw new Error(
+                `forceGenerateAction: OpenAI response does not include a tool call; finish_reason = ${choice.finish_reason}`
+            );
+        }
+        const chatCompletionMessage = choice.message;
+        const outerToolCalls = chatCompletionMessage.tool_calls;
+        if (!outerToolCalls || outerToolCalls.length === 0) {
+            throw new Error(
+                "forceGenerateAction: OpenAI response includes no tool calls despite finish_reason being tool_calls"
+            );
+        } else if (outerToolCalls.length > 1) {
+            log.warn(
+                "forceGenerateAction: OpenAI response includes multiple tool calls; only the first will be used"
+            );
+            chatCompletionMessage.tool_calls = [outerToolCalls[0]];
+        }
+        const toolCall = outerToolCalls[0];
+        if (toolCall.type !== "function") {
+            throw new Error(
+                `forceGenerateAction: OpenAI response includes a non-function tool call of type ${toolCall.type}; only function tool calls are supported`
+            );
+        }
+
+        const actionMessage: ActionMessage = {
+            command: "action",
+            data: {
+                id: toolCall.id,
+                name: toolCall.function?.name,
+                data: toolCall.function?.arguments
+            }
+        };
+
+        const allowedActionNames = allowedActions.map((a) => a.name);
+        if (!(actionMessage.data.name in allowedActionNames)) {
+            log.warn(
+                `forceGenerateAction: OpenAI chose action "${actionMessage.data.name}" which was not in the list of allowed actions: ${allowedActionNames.join(", ")}; the game will need to handle this.`
+            );
+        }
+
+        return { chatCompletionMessage, actionMessage };
+    }
+
+    private async maybeGenerateAction(
+        additionalMessages: ChatCompletionMessageParam[] = []
+    ): Promise<{ chatCompletionMessage: ChatCompletionMessage; actionMessage?: ActionMessage }> {
+        const messages: ChatCompletionMessageParam[] = [
+            this.systemMessage,
+            ...this.llmMessages,
+            ...additionalMessages
+        ];
+
+        const body: ChatCompletionCreateParamsNonStreaming = {
+            model: openaiModel,
+            messages: messages,
+            response_format: {
+                type: "text"
+            },
+            temperature: 1,
+            max_completion_tokens: 4096,
             frequency_penalty: 0,
             presence_penalty: 0
         };
+
         // Convert actions to tools if there are any
         if (this.actions.length > 0) {
             body.tools = this.actions.map(convertActionToTool);
-        }
-        // Prevent the usage of multiple tools
-        if (body.tools) {
+            // Prevent the usage of multiple tools
             body.parallel_tool_calls = false;
         }
-        if (state.forceAction) {
-            const forcedActionNames = state.forceAction.data.action_names;
-            const forcedActions = this.actions.filter((a) => forcedActionNames.includes(a.name));
-            const hasValidForcedActions = forcedActions.length > 0;
-            if (hasValidForcedActions) {
-                log.info(
-                    `Forcing action from: ${forcedActions
-                        .map((a) => a.name)
-                        .join(", ")} due to forceAction message`
-                );
-                body.tools = forcedActions.map(convertActionToTool);
-                body.tool_choice = "required";
-            } else {
-                const forcedActionNamesStr = forcedActionNames.join(", ");
-                const availableActionNamesStr = this.actions.map((a) => a.name).join(", ");
-                log.warn(
-                    `Received forceAction message with no valid action names: ${forcedActionNamesStr}. Currently available action names are ${availableActionNamesStr}. Jippity may or may not choose to take an action anyway.`
-                );
-                body.tools = this.actions.map(convertActionToTool);
-                body.tool_choice = "auto";
-            }
-        }
+
         log.debug(`Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}}`);
         const response = await openai.chat.completions.create(body);
         log.debug(
             `Received response from OpenAI: ${util.inspect(response, { breakLength: Infinity })}`
         );
+
         if (response.choices.length === 0) {
             throw new Error("OpenAI returned no choices");
         }
@@ -418,6 +577,7 @@ export class Jippity {
                 log.error(
                     `Response from OpenAI contains ${choice.message.tool_calls.length} tool calls; only one is supported`
                 );
+                choice.message.tool_calls = [choice.message.tool_calls[0]];
             }
             assert(
                 choice.message.tool_calls[0].type === "function",
