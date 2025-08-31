@@ -13,7 +13,8 @@ import {
     ContextMessage,
     isContextMessage,
     isForceActionMessage,
-    Message
+    Message,
+    StartupMessage
 } from "./api-types";
 import { log } from "./logging";
 import assert from "node:assert";
@@ -42,6 +43,8 @@ export class Jippity {
     private reactionQueue: Message[] = [];
     private reactionResolver: ((msg: Message) => void) | null = null;
 
+    private startUpMessageResolver: PromiseWithResolvers<StartupMessage> | null = null;
+
     private actionResultManager = new ActionResultManager();
 
     // The initial system message seen by the LLM
@@ -66,15 +69,14 @@ export class Jippity {
             switch (this.state.id) {
                 case "state/waiting-for-game-startup": {
                     // Wait for startup message
-                    log.debug("Waiting for game startup message...");
-                    const msg = await this.receiveNextReactionMessage();
-                    if (msg.command === "startup") {
-                        // Transition to idle state
-                        this.state = toIdleState({ game: msg.game });
-                        log.debug(
-                            `Game startup detected, transitioning to idle state: ${JSON.stringify(this.state)}`
-                        );
-                    }
+                    const msg = await this.waitForStartupMessage();
+                    assert(msg.command === "startup", "Expected startup message");
+                    // Transition to idle state
+                    log.info(`Received game startup message with game "${msg.game}"`);
+                    this.state = toIdleState({ game: msg.game });
+                    log.debug(
+                        `Game startup detected, transitioning to idle state: ${JSON.stringify(this.state)}`
+                    );
                     break;
                 }
                 case "state/idle": {
@@ -212,8 +214,11 @@ export class Jippity {
 
         if (message.command === "startup") {
             // TODO: Handle game restart
-            this.reactionQueue.push(message);
-            this.resolveReactionQueue();
+            assert(this.state.id === "state/waiting-for-game-startup");
+            if (!this.startUpMessageResolver) {
+                this.startUpMessageResolver = Promise.withResolvers<StartupMessage>();
+            }
+            this.startUpMessageResolver.resolve(message);
         }
 
         // Handle action result messages immediately.
@@ -441,6 +446,24 @@ export class Jippity {
             return { chatCompletionMessage: choice.message, actionMessage };
         }
         return { chatCompletionMessage: choice.message };
+    }
+
+    private async waitForStartupMessage(): Promise<StartupMessage> {
+        assert(
+            this.state.id == "state/waiting-for-game-startup",
+            "waitForStartupMessage() can only be called in waiting-for-game-startup state"
+        );
+        if (!this.startUpMessageResolver) {
+            log.debug(
+                "waitForStartupMessage: waiting for startup message; creating new resolver startUpMessageResolver"
+            );
+            this.startUpMessageResolver = Promise.withResolvers<StartupMessage>();
+        } else {
+            log.debug(
+                "waitForStartupMessage: waiting for startup message; startUpMessageResolver already exists"
+            );
+        }
+        return this.startUpMessageResolver.promise;
     }
 
     /**
