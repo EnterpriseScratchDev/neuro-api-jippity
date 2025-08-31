@@ -1,10 +1,7 @@
 import OpenAI from "openai";
-import FunctionParameters = OpenAI.FunctionParameters;
-import {
-    ChatCompletionTool,
-    ChatCompletionUserMessageParam
-} from "openai/resources/chat/completions";
+import { ChatCompletionTool, ChatCompletionUserMessageParam } from "openai/resources/chat/completions";
 import { Action, ForceActionMessage } from "./api-types";
+import FunctionParameters = OpenAI.FunctionParameters;
 
 /**
  * Return the given value if it is an `Error`, otherwise return `undefined`.
@@ -62,4 +59,16 @@ export function convertForcedActionMessageToOpenAIMessage(
         role: "user",
         content: content
     };
+}
+
+/**
+ * Extract the request ID from an OpenAI API error, if available.
+ * @param error the error to extract the request ID from
+ * @returns the request ID, or `null` if not available
+ */
+export function extractRequestIdFromError(error: unknown): string | null {
+    if (error instanceof OpenAI.APIError) {
+        return error.requestID ?? null;
+    }
+    return null;
 }

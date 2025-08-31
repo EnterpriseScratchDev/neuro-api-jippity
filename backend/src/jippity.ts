@@ -18,7 +18,7 @@ import {
 import { log } from "./logging";
 import assert from "node:assert";
 import { ChatCompletionCreateParamsNonStreaming } from "openai/src/resources/chat/completions";
-import { convertActionToTool } from "./utils";
+import { convertActionToTool, extractRequestIdFromError } from "./utils";
 import { openai, openaiModel, send, SYSTEM_MESSAGE } from "./index";
 import {
     ChatCompletionMessage,
@@ -102,8 +102,15 @@ export class Jippity {
                         actionMessage = result.actionMessage;
                     } catch (e) {
                         // Return to idle state on error
-                        // TODO: make sure request_id is logged with the error
-                        log.error("An error occurred when calling OpenAI", e);
+                        const requestId = extractRequestIdFromError(e);
+                        if (requestId) {
+                            log.error(
+                                `An error occurred when calling OpenAI (request ID: ${requestId}):`,
+                                e
+                            );
+                        } else {
+                            log.error("An error occurred when calling OpenAI", e);
+                        }
                         this.state = toIdleState(this.state);
                         break;
                     }
