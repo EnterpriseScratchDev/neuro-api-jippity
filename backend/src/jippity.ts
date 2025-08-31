@@ -27,6 +27,7 @@ import {
     ChatCompletionToolMessageParam
 } from "openai/resources/chat/completions";
 import util from "util";
+import { ActionResultManager } from "./action-result-manager";
 
 export class Jippity {
     private isMainLoopRunning = false;
@@ -41,7 +42,7 @@ export class Jippity {
     private reactionQueue: Message[] = [];
     private reactionResolver: ((msg: Message) => void) | null = null;
 
-    private actionResultResolver: ((result: ActionResultMessage) => void) | null = null;
+    private actionResultManager = new ActionResultManager();
 
     // The initial system message seen by the LLM
 
@@ -134,7 +135,10 @@ export class Jippity {
                 }
                 case "state/pending-action": {
                     // Wait for action result message
-                    const msg = await this.receiveActionResult();
+                    // TODO: Catch exceptions thrown here
+                    const msg: ActionResultMessage = await this.actionResultManager.getActionResult(
+                        this.state.action.data.id
+                    );
                     assert(msg.data.id === this.state.action.data.id, "Action result ID mismatch");
                     const actionResultContent = msg.data.message
                         ? { success: msg.data.success, message: msg.data.message }
@@ -222,18 +226,18 @@ export class Jippity {
             log.info(
                 `Received action result from game: ${util.inspect(message.data, { breakLength: Infinity })}`
             );
-            // Resolve the pending action result promise
-            if (!this.actionResultResolver) {
+            try {
+                this.actionResultManager.resolvePendingAction(message);
+                log.debug(`Resolved pending action for id ${message.data.id}`);
+            } catch (e) {
                 log.error(
-                    "Received an unexpected action/result message. " +
+                    "Error resolving pending action. " +
                         "This means there's either a bug in Jippity or in the game. " +
-                        "Check to see if multiple action/result messages were sent for one action."
+                        "Check to see if multiple action/result messages were sent for one action. " +
+                        "Cause:",
+                    e
                 );
-                return;
             }
-            const resolver = this.actionResultResolver;
-            this.actionResultResolver = null;
-            resolver(message);
             return;
         }
 
@@ -311,21 +315,6 @@ export class Jippity {
                 throw new Error("Multiple reactionResolvers detected!");
             }
             this.reactionResolver = resolve;
-        });
-    }
-
-    async receiveActionResult(): Promise<ActionResultMessage> {
-        if (this.state.id !== "state/pending-action") {
-            throw new Error(
-                "Can only wait for an action result when the state is state/pending-action"
-            );
-        }
-        if (this.actionResultResolver) {
-            throw new Error("receiveActionResult called with existing actionResultResolver");
-        }
-        // Wait for the result of the pending action
-        return new Promise<ActionResultMessage>((resolve) => {
-            this.actionResultResolver = resolve;
         });
     }
 
