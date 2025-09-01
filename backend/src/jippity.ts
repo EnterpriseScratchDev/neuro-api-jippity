@@ -14,7 +14,7 @@ import {
 import { log } from "./logging";
 import assert from "node:assert";
 import { ChatCompletionCreateParamsNonStreaming } from "openai/src/resources/chat/completions";
-import { convertActionToTool, extractRequestIdFromError } from "./utils";
+import { chatCompletionWithLogging, convertActionToTool, extractRequestIdFromError } from "./utils";
 import { openai, openaiModel, send, SYSTEM_MESSAGE } from "./index";
 import {
     ChatCompletionMessage,
@@ -28,6 +28,9 @@ import { ActionResultManager } from "./action-result-manager";
 import { ContextTrimmer, EstimatedTokenCountContextTrimmer } from "./context-trimmers";
 
 export class Jippity {
+    // Things that should be configurable
+    private readonly MAX_COMPLETION_TOKENS = 4096;
+
     private isMainLoopRunning = false;
 
     // state: State = toWaitingForGameState();
@@ -56,7 +59,7 @@ export class Jippity {
     private llmMessages: ChatCompletionMessageParam[] = [];
 
     // TODO: Make this customizable
-    private contextTrimmer: ContextTrimmer = new EstimatedTokenCountContextTrimmer(2000, 1);
+    private contextTrimmer: ContextTrimmer = new EstimatedTokenCountContextTrimmer(3072, 1);
 
     constructor() {}
 
@@ -470,17 +473,20 @@ export class Jippity {
                 type: "text"
             },
             temperature: 1,
-            max_completion_tokens: 4096,
+            max_completion_tokens: this.MAX_COMPLETION_TOKENS,
             frequency_penalty: 0,
             presence_penalty: 0,
             tools: allowedActions.map(convertActionToTool),
             tool_choice: "required",
-            parallel_tool_calls: false
+            parallel_tool_calls: false,
+            reasoning_effort: "low"
         };
         log.debug(
             `forceGenerateAction: Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}`
         );
-        const response = await openai.chat.completions.create(body);
+        const response = await chatCompletionWithLogging(() =>
+            openai.chat.completions.create(body)
+        );
         log.debug(
             `forceGenerateAction: Received response from OpenAI: ${util.inspect(response, { breakLength: Infinity })}`
         );
@@ -553,9 +559,10 @@ export class Jippity {
                 type: "text"
             },
             temperature: 1,
-            max_completion_tokens: 4096,
+            max_completion_tokens: this.MAX_COMPLETION_TOKENS,
             frequency_penalty: 0,
-            presence_penalty: 0
+            presence_penalty: 0,
+            reasoning_effort: "low"
         };
 
         // Convert actions to tools if there are any
@@ -566,7 +573,9 @@ export class Jippity {
         }
 
         log.debug(`Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}}`);
-        const response = await openai.chat.completions.create(body);
+        const response = await chatCompletionWithLogging(() =>
+            openai.chat.completions.create(body)
+        );
         log.debug(
             `Received response from OpenAI: ${util.inspect(response, { breakLength: Infinity })}`
         );
@@ -575,6 +584,7 @@ export class Jippity {
             throw new Error("OpenAI returned no choices");
         }
         const choice = response.choices[0];
+        log.debug(`OpenAI finish_reason: ${choice.finish_reason}`);
 
         if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
             if (choice.message.tool_calls.length > 1) {
