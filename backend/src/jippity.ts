@@ -25,6 +25,7 @@ import {
 } from "openai/resources/chat/completions";
 import util from "util";
 import { ActionResultManager } from "./action-result-manager";
+import { ContextTrimmer, EstimatedTokenCountContextTrimmer } from "./context-trimmers";
 
 export class Jippity {
     private isMainLoopRunning = false;
@@ -53,6 +54,9 @@ export class Jippity {
     private systemMessage = SYSTEM_MESSAGE;
     // The messages sent to the LLM, excluding the system prompt and the pending tool call, if any
     private llmMessages: ChatCompletionMessageParam[] = [];
+
+    // TODO: Make this customizable
+    private contextTrimmer: ContextTrimmer = new EstimatedTokenCountContextTrimmer(2000, 1);
 
     constructor() {}
 
@@ -649,17 +653,7 @@ export class Jippity {
      * This is a naive implementation that just keeps the last 10 messages if there are more than 15.
      */
     private trimLlmMessages(): void {
-        // TODO: Implement better message trimming to fit within token limits
-        // TODO: Make these values configurable
-        if (this.llmMessages.length > 15) {
-            this.llmMessages = this.llmMessages.slice(-10);
-
-            const firstMessage = this.llmMessages[0];
-            if (firstMessage.role === "tool") {
-                // Remove incomplete tool call from the start of the message list
-                this.llmMessages = this.llmMessages.slice(1);
-            }
-        }
+        this.llmMessages = this.contextTrimmer.trimContext(this.llmMessages);
     }
 
     /**
