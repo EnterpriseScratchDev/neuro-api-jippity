@@ -1,10 +1,9 @@
 import OpenAI from "openai";
-import FunctionParameters = OpenAI.FunctionParameters;
-import {
-    ChatCompletionTool,
-    ChatCompletionUserMessageParam
-} from "openai/resources/chat/completions";
+import { ChatCompletion, ChatCompletionTool, ChatCompletionUserMessageParam } from "openai/resources/chat/completions";
 import { Action, ForceActionMessage } from "./api-types";
+import { log } from "./logging";
+import util from "util";
+import FunctionParameters = OpenAI.FunctionParameters;
 
 /**
  * Return the given value if it is an `Error`, otherwise return `undefined`.
@@ -62,4 +61,28 @@ export function convertForcedActionMessageToOpenAIMessage(
         role: "user",
         content: content
     };
+}
+
+/**
+ * Extract the request ID from an OpenAI API error, if available.
+ * @param error the error to extract the request ID from
+ * @returns the request ID, or `null` if not available
+ */
+export function extractRequestIdFromError(error: unknown): string | null {
+    if (error instanceof OpenAI.APIError) {
+        return error.requestID ?? null;
+    }
+    return null;
+}
+
+export async function chatCompletionWithLogging(
+    requestFunc: () => Promise<ChatCompletion>
+): Promise<ChatCompletion> {
+    const startTime = Date.now();
+    const response = await requestFunc();
+    const duration = Date.now() - startTime;
+    log.info(
+        `OpenAI request completed in ${duration} ms, usage: ${util.inspect(response.usage, { breakLength: Infinity })}`
+    );
+    return response;
 }
