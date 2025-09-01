@@ -26,11 +26,25 @@ import {
 import util from "util";
 import { ActionResultManager } from "./action-result-manager";
 import { ContextTrimmer, EstimatedTokenCountContextTrimmer } from "./context-trimmers";
+import { ReasoningEffort } from "openai/src/resources/shared";
 
 export class Jippity {
     // Things that should be configurable
+    // ----------------------------------
+    // Max tokens to generate in a single response
+    // If the model tries to generate more than this, the program will just crash.
+    // Let me know if you have an idea for a more graceful way to handle this.
     private readonly MAX_COMPLETION_TOKENS = 4096;
+    // Adjust this to control how much effort the model puts into reasoning about its actions
+    // Set it to null to use the model's default, or if the model doesn't support this parameter
+    private readonly REASONING_EFFORT: ReasoningEffort = "low";
+    // Context window management parameters
+    // See EstimatedTokenCountContextTrimmer for details
+    private readonly CONTEXT_MAX_TOKENS = 4096;
+    private readonly CONTEXT_MIN_MESSAGES_TO_KEEP = 2; //
+    // ----------------------------------
 
+    // Whether the main loop is running
     private isMainLoopRunning = false;
 
     // state: State = toWaitingForGameState();
@@ -59,7 +73,10 @@ export class Jippity {
     private llmMessages: ChatCompletionMessageParam[] = [];
 
     // TODO: Make this customizable
-    private contextTrimmer: ContextTrimmer = new EstimatedTokenCountContextTrimmer(3072, 1);
+    private contextTrimmer: ContextTrimmer = new EstimatedTokenCountContextTrimmer(
+        this.CONTEXT_MAX_TOKENS,
+        this.CONTEXT_MIN_MESSAGES_TO_KEEP
+    );
 
     constructor() {}
 
@@ -478,9 +495,11 @@ export class Jippity {
             presence_penalty: 0,
             tools: allowedActions.map(convertActionToTool),
             tool_choice: "required",
-            parallel_tool_calls: false,
-            reasoning_effort: "low"
+            parallel_tool_calls: false
         };
+        if (this.REASONING_EFFORT) {
+            body.reasoning_effort = this.REASONING_EFFORT;
+        }
         log.debug(
             `forceGenerateAction: Sending request to OpenAI: ${util.inspect(body, { breakLength: Infinity })}`
         );
@@ -561,9 +580,11 @@ export class Jippity {
             temperature: 1,
             max_completion_tokens: this.MAX_COMPLETION_TOKENS,
             frequency_penalty: 0,
-            presence_penalty: 0,
-            reasoning_effort: "low"
+            presence_penalty: 0
         };
+        if (this.REASONING_EFFORT) {
+            body.reasoning_effort = this.REASONING_EFFORT;
+        }
 
         // Convert actions to tools if there are any
         if (this.actions.length > 0) {
